@@ -1,0 +1,38 @@
+# Archivos de IntelliJ / Android Studio
+*.iml
+.idea/
+!.idea/runConfigurations/
+
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Local config (rutas del SDK específicas de cada PC)
+local.properties
+
+# macOS
+.DS_Store
+
+# APKs y artefactos de compilación
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Logs y capturas
+captures/
+*.log
+
+# Native build
+.externalNativeBuild
+.cxx/
+
+# Keystores (NUNCA subir a GitHub)
+*.jks
+*.keystore
+keystore.properties
+
+# Archivos OS
+Thumbs.db
+ehthumbs.db
