@@ -28,6 +28,16 @@
             android:theme="@style/Theme.Cafeteros" />
 
         <activity
+            android:name=".ui.features.auth.LoginActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.auth.RegisterActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="false" />
     </application>
