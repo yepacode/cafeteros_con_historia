@@ -121,6 +121,21 @@ class UserRepository(
     }
 
     /**
+     * Elimina permanentemente la cuenta del usuario actualmente logueado:
+     * borra su fila de la tabla `users` y limpia la sesión activa.
+     *
+     * Si no hay sesión activa, no hace nada.
+     *
+     * @return `true` si se eliminó alguna cuenta; `false` si no había sesión.
+     */
+    suspend fun deleteCurrentAccount(): Boolean {
+        val current = getCurrentUser() ?: return false
+        userDao.deleteById(current.id)
+        sessionDataStore.clear()
+        return true
+    }
+
+    /**
      * Cambia la contraseña del usuario identificado por [email].
      *
      * @return `true` si la actualización afectó alguna fila, `false` si el

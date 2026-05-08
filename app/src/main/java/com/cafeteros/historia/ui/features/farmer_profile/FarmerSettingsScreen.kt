@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,12 +57,25 @@ class FarmerSettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val repo = (application as com.cafeteros.historia.CafeterosApplication).userRepository
         setContent {
             CafeterosTheme {
                 FarmerSettingsScreen(
                     onBack = ::finish,
                     onAction = { Toast.makeText(this, "Próximamente: $it", Toast.LENGTH_SHORT).show() },
-                    onLogout = ::finish
+                    onLogout = {
+                        lifecycleScope.launch {
+                            repo.logout()
+                            val intent = Intent(
+                                this@FarmerSettingsActivity,
+                                com.cafeteros.historia.ui.features.auth.LoginActivity::class.java
+                            ).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            }
+                            startActivity(intent)
+                            finish()
+                        }
+                    }
                 )
             }
         }

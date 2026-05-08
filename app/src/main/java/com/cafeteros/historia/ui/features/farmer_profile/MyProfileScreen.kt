@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -33,6 +36,7 @@ import androidx.compose.material.icons.outlined.AlternateEmail
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Group
@@ -87,6 +91,7 @@ class MyProfileActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val repo = (application as com.cafeteros.historia.CafeterosApplication).userRepository
         setContent {
             CafeterosTheme {
                 MyProfileScreen(
@@ -104,10 +109,37 @@ class MyProfileActivity : ComponentActivity() {
                     onOpenNotifications = { NotificationsActivity.start(this) },
                     onOpenHelp = { HelpAndSupportActivity.start(this) },
                     onOpenTerms = { SellerAgreementActivity.start(this) },
-                    onLogout = ::finish
+                    onLogout = {
+                        lifecycleScope.launch {
+                            repo.logout()
+                            goToLogin()
+                        }
+                    },
+                    onDeleteAccount = {
+                        lifecycleScope.launch {
+                            repo.deleteCurrentAccount()
+                            android.widget.Toast.makeText(
+                                this@MyProfileActivity,
+                                "Cuenta eliminada",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            goToLogin()
+                        }
+                    }
                 )
             }
         }
+    }
+
+    private fun goToLogin() {
+        val intent = Intent(
+            this,
+            com.cafeteros.historia.ui.features.auth.LoginActivity::class.java
+        ).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+        finish()
     }
 
     companion object {
@@ -134,8 +166,11 @@ fun MyProfileScreen(
     onOpenNotifications: () -> Unit,
     onOpenHelp: () -> Unit,
     onOpenTerms: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onDeleteAccount: () -> Unit
 ) {
+    val showDeleteConfirm = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -169,7 +204,7 @@ fun MyProfileScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = (-32).dp)
+                    .offset(y = 32.dp)
                     .size(80.dp)
                     .background(Color.White, CircleShape)
                     .padding(3.dp)
@@ -317,6 +352,71 @@ fun MyProfileScreen(
             Spacer(modifier = Modifier.size(8.dp))
             Text(text = "Cerrar sesión", color = Color(0xFFB23A3A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
+
+        // Eliminar cuenta — acción destructiva, requiere confirmación
+        Row(
+            modifier = Modifier
+                .padding(horizontal = BrandSpacing.lg)
+                .fillMaxWidth()
+                .clickable { showDeleteConfirm.value = true }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                androidx.compose.material.icons.Icons.Outlined.Delete,
+                contentDescription = null,
+                tint = Color(0xFFB23A3A),
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(
+                text = "Eliminar cuenta",
+                color = Color(0xFFB23A3A),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+
+    if (showDeleteConfirm.value) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showDeleteConfirm.value = false },
+            title = {
+                Text(
+                    text = "¿Eliminar tu cuenta?",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandColors.TextPrimary
+                    )
+                )
+            },
+            text = {
+                Text(
+                    text = "Esta acción es permanente. Se borrarán tus datos de la cuenta y tendrás que volver a registrarte si quieres usar Origen.",
+                    color = BrandColors.TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showDeleteConfirm.value = false
+                        onDeleteAccount()
+                    }
+                ) {
+                    Text(text = "Eliminar", color = Color(0xFFB23A3A), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showDeleteConfirm.value = false }) {
+                    Text(text = "Cancelar", color = BrandColors.TextPrimary)
+                }
+            },
+            containerColor = BrandColors.CardBackground
+        )
     }
 }
 

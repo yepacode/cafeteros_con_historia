@@ -44,4 +44,8 @@ interface UserDao {
     /** Útil para tests / debug: borra todos los usuarios. */
     @Query("DELETE FROM users")
     suspend fun deleteAll()
+
+    /** Borra un usuario específico por id. Usado al eliminar cuenta desde el perfil. */
+    @Query("DELETE FROM users WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }
