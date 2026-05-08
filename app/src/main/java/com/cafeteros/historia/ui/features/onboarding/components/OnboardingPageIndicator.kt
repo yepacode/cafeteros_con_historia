@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.cafeteros.historia.ui.theme.BrandColors
@@ -25,15 +26,23 @@ import com.cafeteros.historia.ui.theme.BrandColors
  * con animación suave, dando feedback visual de la posición actual sin
  * ocupar espacio extra.
  *
+ * Los colores son parametrizables: por defecto usa los tokens de marca para
+ * el flujo de comprador, pero el flujo de caficultor pasa colores propios
+ * (verdes) para mantener consistencia visual.
+ *
  * @param modifier modifier opcional aplicado al [Row] contenedor.
  * @param pageCount número total de páginas a representar.
  * @param currentPage índice (base 0) de la página actualmente activa.
+ * @param activeColor color del punto activo.
+ * @param inactiveColor color de los puntos inactivos.
  */
 @Composable
 fun OnboardingPageIndicator(
     modifier: Modifier = Modifier,
     pageCount: Int,
-    currentPage: Int
+    currentPage: Int,
+    activeColor: Color = BrandColors.IndicatorActive,
+    inactiveColor: Color = BrandColors.IndicatorInactive
 ) {
     Row(
         modifier = modifier,
@@ -41,20 +50,24 @@ fun OnboardingPageIndicator(
         verticalAlignment = Alignment.CenterVertically
     ) {
         repeat(pageCount) { pageIndex ->
-            PageIndicatorDot(isActive = pageIndex == currentPage)
+            PageIndicatorDot(
+                isActive = pageIndex == currentPage,
+                activeColor = activeColor,
+                inactiveColor = inactiveColor
+            )
         }
     }
 }
 
 /** Punto individual del indicador, animado en color y ancho. */
 @Composable
-private fun PageIndicatorDot(isActive: Boolean) {
+private fun PageIndicatorDot(
+    isActive: Boolean,
+    activeColor: Color,
+    inactiveColor: Color
+) {
     val color by animateColorAsState(
-        targetValue = if (isActive) {
-            BrandColors.IndicatorActive
-        } else {
-            BrandColors.IndicatorInactive
-        },
+        targetValue = if (isActive) activeColor else inactiveColor,
         label = "indicatorColor"
     )
     val width by animateDpAsState(
@@ -70,8 +83,18 @@ private fun PageIndicatorDot(isActive: Boolean) {
     )
 }
 
-@Preview(name = "PageIndicator")
+@Preview(name = "PageIndicator – default (café)")
 @Composable
 private fun OnboardingPageIndicatorPreview() {
     OnboardingPageIndicator(pageCount = 3, currentPage = 1)
+}
+
+@Preview(name = "PageIndicator – verde caficultor")
+@Composable
+private fun OnboardingPageIndicatorFarmerPreview() {
+    OnboardingPageIndicator(
+        pageCount = 3,
+        currentPage = 2,
+        activeColor = BrandColors.FarmerIndicatorActive
+    )
 }

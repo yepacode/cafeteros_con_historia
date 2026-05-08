@@ -97,4 +97,65 @@ object BrandColors {
 
     /** Color del checkbox marcado y de su tick. */
     val CheckboxChecked: Color = CoffeeBrown
+
+    // ── Tokens del flujo de onboarding del Caficultor ───────────────────────
+
+    /**
+     * Verde oscuro de marca caficultor (botones "Siguiente" / "Empezar mi
+     * registro"). Tono inspirado en el follaje de las plantaciones.
+     */
+    val FarmerPrimary: Color = Color(0xFF1F4D38)
+
+    /** Color de los puntos activos del indicador en el flujo caficultor. */
+    val FarmerIndicatorActive: Color = FarmerPrimary
+
+    /** Fondo de la insignia "+180 caficultores" — crema cálido sutil. */
+    val FarmerStatsBadgeBackground: Color = Color(0xFFF3EBD8)
+
+    /** Color del texto de la insignia "+180 caficultores". */
+    val FarmerStatsBadgeText: Color = Color(0xFF3E2723)
+
+    // ── Tokens del banner informativo amarillo (paso 2 caficultor) ───────────
+
+    /** Fondo crema-amarillento del banner informativo. */
+    val InfoBannerBackground: Color = Color(0xFFFFF6DD)
+
+    /** Borde lateral izquierdo del banner (acento). */
+    val InfoBannerAccent: Color = Color(0xFFC4A14A)
+
+    /** Color del ícono y del CTA en el banner. */
+    val InfoBannerAction: Color = Color(0xFF8C6E1F)
+
+    // ── Tokens del banner verde de confianza (paso 4 caficultor) ────────────
+
+    /** Fondo verde-pastel del banner de "encriptación". */
+    val TrustBannerBackground: Color = Color(0xFFE8F4EC)
+
+    /** Color del ícono e iconografía del banner verde. */
+    val TrustBannerAccent: Color = FarmerPrimary
+
+    // ── Tokens del badge "No aplica" (Cámara de Comercio) ──────────────────
+
+    /** Fondo del chip "No aplica" cuando está activo. */
+    val NotApplicableChipBackground: Color = Color(0xFFF0EDE5)
+
+    /** Texto del chip "No aplica". */
+    val NotApplicableChipText: Color = TextSecondary
+
+    // ── Tokens del paso 5: timeline de verificación ─────────────────────────
+
+    /** Color de un paso completado del timeline (check verde). */
+    val StatusDone: Color = FarmerPrimary
+
+    /** Color de un paso en curso (naranja-mostaza). */
+    val StatusInProgress: Color = Color(0xFFD9A03C)
+
+    /** Color de un paso pendiente (gris). */
+    val StatusPending: Color = IndicatorInactive
+
+    /** Fondo del chip "EN REVISIÓN" del hero (crema cálido). */
+    val ReviewBadgeBackground: Color = FarmerStatsBadgeBackground
+
+    /** Fondo de la card hero del paso 5 (blanco con sombra suave). */
+    val HeroCardBackground: Color = CardBackground
 }

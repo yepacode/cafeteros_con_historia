@@ -23,6 +23,12 @@ local.properties
 # Logs y capturas
 captures/
 *.log
+logcat.txt
+
+# Bases de datos extraídas vía adb (debugging)
+*.db
+*.db-shm
+*.db-wal
 
 # Native build
 .externalNativeBuild

@@ -28,22 +28,7 @@ sealed interface BiometricResult {
     data class Error(val code: Int, val message: String) : BiometricResult
 }
 
-/**
- * Wrapper sobre AndroidX [BiometricPrompt].
- *
- * Uso:
- * ```
- * val authenticator = remember(activity) { BiometricAuthenticator(activity) }
- * authenticator.authenticate { result -> ... }
- * ```
- *
- * Para que funcione, la Activity contenedora debe extender [FragmentActivity]
- * (o `AppCompatActivity`). [androidx.activity.ComponentActivity] no sirve.
- *
- * No persiste credenciales por sí mismo: sirve solo para *desbloquear* una
- * acción. En producción, dentro del callback de éxito habría que descifrar un
- * refresh token guardado en `EncryptedSharedPreferences` y enviarlo al backend.
- */
+
 class BiometricAuthenticator(private val activity: FragmentActivity) {
 
     private val executor = ContextCompat.getMainExecutor(activity)

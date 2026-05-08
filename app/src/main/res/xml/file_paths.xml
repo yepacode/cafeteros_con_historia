@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Carpeta interna donde la app almacena las fotos temporales que toma con
+      la cámara antes de subirlas / persistirlas. FileProvider expone esta
+      carpeta vía content:// URIs seguros para compartir con la app de cámara.
+    -->
+    <cache-path name="camera_captures" path="camera/" />
+</paths>

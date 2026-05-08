@@ -2,7 +2,32 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+      Cámara declarada como NO requerida: la app funciona sin cámara (el
+      caficultor puede subir fotos desde la galería). Pero permitimos que
+      Android la use cuando esté disponible. No declaramos
+      <uses-permission android:name="android.permission.CAMERA" /> porque
+      delegamos en la app de cámara del sistema vía Intent.ACTION_IMAGE_CAPTURE,
+      lo cual no requiere ese permiso a nivel de nuestra app.
+    -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+    <!--
+      Android 11+ (API 30) introdujo "package visibility": las apps no pueden
+      lanzar intents implícitos a otras apps si no declaran que las van a
+      consultar. Sin este bloque, ActivityResultContracts.TakePicture()
+      retorna success=false silenciosamente porque no encuentra resolver.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
+
     <application
+        android:name=".CafeterosApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -28,6 +53,21 @@
             android:theme="@style/Theme.Cafeteros" />
 
         <activity
+            android:name=".ui.features.farmer_onboarding.FarmerOnboardingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_registration.FarmerRegistrationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.debug.DebugNavigationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
             android:name=".ui.features.auth.LoginActivity"
             android:exported="false"
             android:theme="@style/Theme.Cafeteros" />
@@ -38,8 +78,167 @@
             android:theme="@style/Theme.Cafeteros" />
 
         <activity
+            android:name=".ui.features.password_recovery.PasswordRecoveryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="false" />
+
+        <activity
+            android:name=".ui.features.farmer_products.ProductListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_products.ProductCreateActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_products.ProductPublishedActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_inventory.InventoryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_sales.SalesActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_sales.OrderDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_sales.NewSaleNotificationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_sales.UpdateOrderStatusActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_sales.GenerateShippingGuideActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_sales.ShippingGuideGeneratedActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_wallet.WalletActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_wallet.TransactionHistoryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_wallet.TransactionDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_wallet.WithdrawActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_wallet.WithdrawConfirmationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_stats.StatsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_messages.InboxActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_messages.ChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_reviews.ReviewsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_reviews.ReplyReviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_profile.MyProfileActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_profile.PublicProfilePreviewActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_profile.EditFarmActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_profile.CertificationsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_profile.FarmerSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_notifications.NotificationsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_help.HelpAndSupportActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.farmer_help.SellerAgreementActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!--
+          FileProvider para exponer fotos de cámara vía URIs `content://`.
+          La autoridad sigue la convención `${applicationId}.fileprovider`.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
