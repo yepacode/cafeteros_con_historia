@@ -86,6 +86,125 @@
             android:name=".MainActivity"
             android:exported="false" />
 
+        <!-- ── Flujo del comprador (rama tati) ─────────────────────── -->
+
+        <activity
+            android:name=".ui.features.explore.ExploreActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Cafeteros">
+            <intent-filter>
+                <action android:name="com.cafeteros.historia.OPEN_EXPLORE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.features.coffeemap.CoffeeMapActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.zonedetail.ZoneDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.caficultordetail.CaficultorDetailActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Cafeteros">
+            <intent-filter>
+                <action android:name="com.cafeteros.historia.OPEN_CAFICULTOR_DETAIL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.features.productdetail.ProductDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.search.SearchActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.filters.OriginFiltersActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.searchresults.SearchResultsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.caficultorshop.CaficultorShopActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.cart.CartActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.checkoutshipping.ShippingAddressActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.checkoutpayment.PaymentMethodActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Cafeteros">
+            <intent-filter>
+                <action android:name="com.cafeteros.historia.OPEN_PAYMENT_METHOD" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.features.orderreview.OrderReviewActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Cafeteros">
+            <intent-filter>
+                <action android:name="com.cafeteros.historia.OPEN_ORDER_REVIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.features.paymentsuccess.PaymentSuccessActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Cafeteros">
+            <intent-filter>
+                <action android:name="com.cafeteros.historia.OPEN_PAYMENT_SUCCESS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.features.paymentfailed.PaymentFailedActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Cafeteros">
+            <intent-filter>
+                <action android:name="com.cafeteros.historia.OPEN_PAYMENT_FAILED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.features.addressbook.AddressBookActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Cafeteros">
+            <intent-filter>
+                <action android:name="com.cafeteros.historia.OPEN_ADDRESS_BOOK" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- ── Flujo del caficultor (rama jenn) ───────────────────── -->
+
         <activity
             android:name=".ui.features.farmer_products.ProductListActivity"
             android:exported="false"
