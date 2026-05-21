@@ -1,13 +1,16 @@
 package com.cafeteros.historia.ui.features.checkoutshipping
 
+import android.Manifest
 import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,20 +32,25 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -54,6 +62,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.cafeteros.historia.CafeterosApplication
 import com.cafeteros.historia.data.local.cart.CartStore
+import com.cafeteros.historia.data.location.GeocoderHelper
+import com.cafeteros.historia.data.location.LocationProvider
+import com.cafeteros.historia.data.location.LocationResult
 import com.cafeteros.historia.data.model.Order
 import com.cafeteros.historia.data.model.OrderItem
 import com.cafeteros.historia.data.model.OrderStatus
@@ -65,6 +76,7 @@ import com.cafeteros.historia.data.repository.OrderOperationResult
 import com.cafeteros.historia.data.repository.OrderRepository
 import com.cafeteros.historia.data.repository.ProductRepository
 import com.cafeteros.historia.data.repository.UserRepository
+import com.cafeteros.historia.ui.components.MapLocationPicker
 import com.cafeteros.historia.ui.features.paymentsuccess.PaymentSuccessActivity
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
@@ -306,11 +318,78 @@ private fun CheckoutScreen(
     onBack: () -> Unit,
     onConfirm: (addressText: String) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Helpers de geolocalización: viven a nivel de Composable porque solo
+    // requieren contexto y son baratos de construir.
+    val locationProvider = remember { LocationProvider(context) }
+    val geocoderHelper = remember { GeocoderHelper(context) }
+
     // Si hay direcciones guardadas, prellena con la default.
     val initialAddress = state.savedAddresses.firstOrNull { it.isDefault }
         ?: state.savedAddresses.firstOrNull()
     var addressText by remember(initialAddress) {
         mutableStateOf(initialAddress?.line.orEmpty())
+    }
+
+    // Coordenadas seleccionadas (botón GPS o tap en el mapa). Si están
+    // disponibles se muestra el [MapLocationPicker] para refinar el punto.
+    var pickedLat by remember { mutableStateOf<Double?>(null) }
+    var pickedLng by remember { mutableStateOf<Double?>(null) }
+    var locationLoading by remember { mutableStateOf(false) }
+
+    // Resuelve lat/lng → dirección legible y actualiza el campo. Se llama
+    // tras "Usar mi ubicación" y tras cada tap en el mapa.
+    fun resolveAddressFor(lat: Double, lng: Double) {
+        scope.launch {
+            val resolved = geocoderHelper.reverse(lat, lng)
+            if (resolved != null && resolved.fullLine.isNotBlank()) {
+                addressText = resolved.fullLine
+            } else {
+                // Si el Geocoder falla, dejamos las coordenadas crudas
+                // como referencia para que el caficultor sepa dónde es.
+                addressText = "Lat: ${"%.5f".format(lat)}, Lng: ${"%.5f".format(lng)}"
+            }
+        }
+    }
+
+    // Launcher para pedir los permisos de ubicación en tiempo de ejecución.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        val anyGranted = granted.values.any { it }
+        if (!anyGranted) {
+            Toast.makeText(
+                context,
+                "Sin permiso de ubicación no podemos detectar tu posición.",
+                Toast.LENGTH_LONG
+            ).show()
+            locationLoading = false
+            return@rememberLauncherForActivityResult
+        }
+        // Permiso concedido: pedimos la ubicación.
+        scope.launch {
+            when (val result = locationProvider.getCurrentLocation()) {
+                is LocationResult.Success -> {
+                    pickedLat = result.latitude
+                    pickedLng = result.longitude
+                    resolveAddressFor(result.latitude, result.longitude)
+                }
+                LocationResult.PermissionDenied -> Toast.makeText(
+                    context, "Permiso denegado.", Toast.LENGTH_SHORT
+                ).show()
+                LocationResult.Unavailable -> Toast.makeText(
+                    context,
+                    "No pudimos leer tu ubicación. Activa el GPS y vuelve a intentar.",
+                    Toast.LENGTH_LONG
+                ).show()
+                is LocationResult.Error -> Toast.makeText(
+                    context, result.message, Toast.LENGTH_LONG
+                ).show()
+            }
+            locationLoading = false
+        }
     }
 
     Column(modifier = Modifier
@@ -390,6 +469,73 @@ private fun CheckoutScreen(
                     SavedAddressesRow(
                         addresses = state.savedAddresses,
                         onPick = { addressText = it.line }
+                    )
+                }
+
+                // ── Botón "Usar mi ubicación" ─────────────────────────
+                OutlinedButton(
+                    onClick = {
+                        locationLoading = true
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !locationLoading,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    if (locationLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = BrandColors.CoffeeBrown
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.MyLocation,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = BrandColors.CoffeeBrown
+                        )
+                    }
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(
+                        text = if (locationLoading)
+                            "Detectando tu ubicación…"
+                        else
+                            "Usar mi ubicación actual",
+                        fontSize = 13.sp,
+                        color = BrandColors.CoffeeBrown,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                // ── Mapa para refinar el punto ────────────────────────
+                if (pickedLat != null && pickedLng != null) {
+                    Text(
+                        text = "Toca el mapa para ajustar el punto exacto:",
+                        color = BrandColors.TextSecondary,
+                        fontSize = 11.sp,
+                        fontStyle = FontStyle.Italic
+                    )
+                    MapLocationPicker(
+                        initialLat = pickedLat,
+                        initialLng = pickedLng,
+                        onLocationPicked = { lat, lng ->
+                            pickedLat = lat
+                            pickedLng = lng
+                            resolveAddressFor(lat, lng)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
+                            .background(
+                                BrandColors.MapCanvasBackground,
+                                RoundedCornerShape(12.dp)
+                            )
                     )
                 }
             }

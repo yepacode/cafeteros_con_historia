@@ -10,6 +10,22 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!--
+      Geolocalización: el comprador puede pulsar "Usar mi ubicación" en el
+      checkout para auto-rellenar lat/lng y dirección. Pedimos ambos niveles
+      de precisión; si el usuario solo concede COARSE, lo seguimos usando
+      pero con menor exactitud.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+      osmdroid recomienda WAKE_LOCK para que el dispositivo no entre a
+      doze mientras se renderizan tiles del mapa, especialmente en
+      sesiones largas de selección de punto.
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
       Cámara declarada como NO requerida: la app funciona sin cámara (el
       caficultor puede subir fotos desde la galería). Pero permitimos que
       Android la use cuando esté disponible. No declaramos
