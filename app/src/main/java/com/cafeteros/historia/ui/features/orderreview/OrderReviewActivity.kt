@@ -106,40 +106,13 @@ class OrderReviewActivity : ComponentActivity() {
                     onEditAddress = ::finish,
                     onEditPayment = ::finish,
                     onViewAllProducts = { toast("Ver productos próximamente") },
-                    onConfirm = { confirmedTotals ->
-                        val gatewayResult = MockPaymentGateway.simulatePayment()
-                        Log.d(
-                            TAG,
-                            "Confirmar pedido total=${confirmedTotals.totalFormatted}, " +
-                                    "roleId=$currentRoleId, gatewayResult=$gatewayResult"
-                        )
-                        val nextIntent = when (gatewayResult) {
-                            MockPaymentGateway.Result.SUCCESS ->
-                                Intent(this, PaymentSuccessActivity::class.java).apply {
-                                    putExtra(
-                                        PaymentSuccessActivity.EXTRA_ROLE_ID,
-                                        currentRoleId
-                                    )
-                                    putExtra(
-                                        PaymentSuccessActivity.EXTRA_TOTAL_PAID,
-                                        confirmedTotals.totalFormatted
-                                    )
-                                    paymentMethodLabel?.let {
-                                        putExtra(
-                                            PaymentSuccessActivity.EXTRA_PAYMENT_LABEL,
-                                            it
-                                        )
-                                    }
-                                }
-                            MockPaymentGateway.Result.FAILURE ->
-                                Intent(this, PaymentFailedActivity::class.java).apply {
-                                    putExtra(
-                                        PaymentFailedActivity.EXTRA_ROLE_ID,
-                                        currentRoleId
-                                    )
-                                }
-                        }
-                        startActivity(nextIntent)
+                    onConfirm = { _ ->
+                        // OrderReviewActivity quedó huérfana: el checkout
+                        // real ahora vive en ShippingAddressActivity y crea
+                        // Orders en Firestore. Esta pantalla mock no se
+                        // navega desde el flujo activo del comprador.
+                        toast("Checkout migrado a la nueva pantalla")
+                        finish()
                     }
                 )
             }

@@ -3,9 +3,11 @@ package com.cafeteros.historia.ui.features.farmer_wallet
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,60 +27,62 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
-import androidx.compose.material.icons.outlined.AccessTime
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Receipt
-import androidx.compose.material.icons.outlined.Remove
-import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cafeteros.historia.data.model.Order
+import com.cafeteros.historia.data.model.OrderStatus
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-// ── Datos mock del feature ──────────────────────────────────────────────────
-
-internal data class MockMovement(
-    val id: String,
-    val type: MovementType,
-    val title: String,
-    val subtitle: String,
-    val amount: Int
-)
-
-internal enum class MovementType { INCOME, OUTCOME, PENDING }
-
-internal val MOCK_MOVEMENTS: List<MockMovement> = listOf(
-    MockMovement("M1", MovementType.INCOME, "+\$126.720", "Venta #OR-34521 · Hoy", 126_720),
-    MockMovement("M2", MovementType.OUTCOME, "-\$500.000", "Retiro a Bancolombia · Ayer", -500_000),
-    MockMovement("M3", MovementType.PENDING, "+\$245.000", "Venta #OR-34519 · Pendiente", 245_000)
-)
-
+/**
+ * Activity contenedora de la billetera del caficultor. Usa
+ * [WalletViewModel] que deriva el state desde los pedidos del caficultor
+ * en Firestore (no hay una colección `/wallets` aparte — sería redundante).
+ *
+ * El "retiro" está deshabilitado en MVP porque no hay pasarela de pagos
+ * conectada (ePayco/Mercado Pago); al pulsarlo muestra Toast informativo.
+ */
 class WalletActivity : ComponentActivity() {
+
+    private val viewModel: WalletViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CafeterosTheme {
+                val state by viewModel.uiState.collectAsStateWithLifecycle()
                 WalletScreen(
+                    state = state,
                     onBack = ::finish,
-                    onWithdraw = { WithdrawActivity.start(this) },
-                    onOpenHistory = { TransactionHistoryActivity.start(this) },
-                    onMovementTap = { id -> TransactionDetailActivity.start(this, id) }
+                    onWithdraw = {
+                        Toast.makeText(
+                            this,
+                            "Retiros: próximamente con integración ePayco",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    },
+                    onOpenHistory = { TransactionHistoryActivity.start(this) }
                 )
             }
         }
@@ -91,13 +95,17 @@ class WalletActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Pantalla de billetera. Stateless: recibe el [state] derivado de pedidos
+ * en `WalletViewModel`.
+ */
 @Composable
 fun WalletScreen(
-    modifier: Modifier = Modifier,
+    state: WalletUiState,
     onBack: () -> Unit,
     onWithdraw: () -> Unit,
     onOpenHistory: () -> Unit,
-    onMovementTap: (String) -> Unit
+    modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
@@ -107,291 +115,161 @@ fun WalletScreen(
             .verticalScroll(rememberScrollState())
             .padding(bottom = BrandSpacing.lg)
     ) {
-        // Top bar
+        TopBar(onBack = onBack)
+
+        Spacer(modifier = Modifier.height(BrandSpacing.sm))
+
+        BalanceCard(state = state)
+
+        Spacer(modifier = Modifier.height(BrandSpacing.md))
+
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth().padding(horizontal = BrandSpacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
         ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                    contentDescription = "Volver",
-                    tint = BrandColors.TextPrimary
-                )
-            }
-            Text(
-                text = "Billetera",
+            MetricTile(
                 modifier = Modifier.weight(1f),
-                style = TextStyle(
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BrandColors.TextPrimary
-                ),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                label = "ESTE MES",
+                value = formatCop(state.monthRevenueCop)
             )
-            Box(
-                modifier = Modifier
-                    .padding(end = BrandSpacing.sm)
-                    .size(32.dp)
-                    .background(BrandColors.FarmerPrimary, CircleShape)
+            MetricTile(
+                modifier = Modifier.weight(1f),
+                label = "PEDIDOS ENTREGADOS",
+                value = state.deliveredCount.toString()
             )
         }
 
-        Column(
-            modifier = Modifier.padding(horizontal = BrandSpacing.lg),
-            verticalArrangement = Arrangement.spacedBy(BrandSpacing.md)
-        ) {
-            BalanceCard(available = 4_820_500, pending = 680_000)
+        Spacer(modifier = Modifier.height(BrandSpacing.md))
 
-            ActionsRow(
-                onWithdraw = onWithdraw,
-                onHistory = onOpenHistory,
-                onInvoices = { /* TODO: pantalla facturas */ }
+        Button(
+            onClick = onWithdraw,
+            modifier = Modifier
+                .padding(horizontal = BrandSpacing.lg)
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(8.dp),
+            enabled = state.availableCop > 0,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = BrandColors.FarmerPrimary,
+                contentColor = Color.White
             )
+        ) {
+            Icon(Icons.Outlined.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(text = "Retirar a mi cuenta", fontWeight = FontWeight.SemiBold)
+        }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
-                MetricMini(
-                    modifier = Modifier.weight(1f),
-                    label = "Este mes",
-                    value = "\$4.850k",
-                    delta = "+18%"
-                )
-                MetricMini(
-                    modifier = Modifier.weight(1f),
-                    label = "Ventas netas",
-                    value = "\$4.268k",
-                    delta = null
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
-                MetricMini(
-                    modifier = Modifier.weight(1f),
-                    label = "Retenciones",
-                    value = "\$42.000",
-                    delta = null
-                )
-                MetricMini(
-                    modifier = Modifier.weight(1f),
-                    label = "Retiros",
-                    value = "\$3.200k",
-                    delta = null
-                )
-            }
+        Spacer(modifier = Modifier.height(BrandSpacing.lg))
 
-            // Banner amarillo: pendientes por liberar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFFFF1B8), RoundedCornerShape(12.dp))
-                    .clickable { /* TODO: detalle pendientes */ }
-                    .padding(BrandSpacing.md),
-                verticalAlignment = Alignment.CenterVertically
+        // Movimientos recientes
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = BrandSpacing.lg),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Movimientos recientes",
+                style = TextStyle(
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandColors.TextPrimary
+                )
+            )
+            Text(
+                text = "Ver todos",
+                modifier = Modifier.clickable(onClick = onOpenHistory),
+                color = BrandColors.FarmerPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(BrandSpacing.sm))
+
+        if (state.movements.isEmpty()) {
+            EmptyMovements()
+        } else {
+            Column(
+                modifier = Modifier.padding(horizontal = BrandSpacing.lg),
+                verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
             ) {
-                Icon(
-                    imageVector = Icons.Outlined.AccessTime,
-                    contentDescription = null,
-                    tint = Color(0xFF8C6E1F),
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "\$680.000 en 3 pedidos",
-                        color = BrandColors.TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Próxima liberación en 2 días",
-                        color = BrandColors.TextSecondary,
-                        fontSize = 11.sp
-                    )
+                state.movements.take(5).forEach { order ->
+                    MovementRow(order = order)
                 }
-                Text(
-                    text = "Ver detalle",
-                    color = Color(0xFF8C6E1F),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            // Movimientos
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Movimientos",
-                    style = TextStyle(
-                        fontFamily = FontFamily.Serif,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = BrandColors.TextPrimary
-                    )
-                )
-                Text(
-                    text = "Ver todos",
-                    modifier = Modifier.clickable(onClick = onOpenHistory),
-                    color = BrandColors.FarmerPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            MOCK_MOVEMENTS.forEach { mov ->
-                MovementRow(movement = mov, onClick = { onMovementTap(mov.id) })
-            }
-
-            // Cuenta vinculada
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
-                    .padding(BrandSpacing.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(Color(0xFFFFD23F), RoundedCornerShape(6.dp))
-                )
-                Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-                    Text(text = "**** 8754", color = BrandColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text(text = "Cuenta vinculada", color = BrandColors.TextSecondary, fontSize = 11.sp)
-                }
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .background(BrandColors.FarmerPrimary, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                }
-            }
-
-            // Información tributaria
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
-                    .padding(BrandSpacing.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.Receipt, contentDescription = null, tint = BrandColors.TextPrimary, modifier = Modifier.size(20.dp))
-                Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-                    Text(text = "Información tributaria", color = BrandColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text(text = "RUT actualizado ✓", color = BrandColors.TextSecondary, fontSize = 11.sp)
-                }
-                Text(text = "EDITAR", color = BrandColors.FarmerPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
             }
         }
     }
 }
 
 @Composable
-private fun BalanceCard(available: Int, pending: Int) {
-    Column(
+private fun TopBar(onBack: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(BrandColors.CoffeeBrown, RoundedCornerShape(16.dp))
-            .padding(BrandSpacing.lg),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "SALDO DISPONIBLE",
-                color = BrandColors.CreamWhiteMuted,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = "Volver",
+                tint = BrandColors.TextPrimary
             )
-            Icon(Icons.Outlined.Visibility, contentDescription = null, tint = BrandColors.CreamWhiteMuted, modifier = Modifier.size(16.dp))
         }
         Text(
-            text = "\$" + "%,d".format(available).replace(',', '.'),
+            text = "Billetera",
+            modifier = Modifier.weight(1f),
+            style = TextStyle(
+                fontFamily = FontFamily.Serif,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = BrandColors.TextPrimary
+            )
+        )
+    }
+}
+
+@Composable
+private fun BalanceCard(state: WalletUiState) {
+    Column(
+        modifier = Modifier
+            .padding(horizontal = BrandSpacing.lg)
+            .fillMaxWidth()
+            .background(BrandColors.CoffeeBrown, RoundedCornerShape(16.dp))
+            .padding(BrandSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "SALDO DISPONIBLE",
+            color = BrandColors.CreamWhiteMuted,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+        Text(
+            text = formatCop(state.availableCop),
             color = BrandColors.CreamWhite,
             fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Serif
         )
-        Text(
-            text = "Pendiente por liberar: \$" + "%,d".format(pending).replace(',', '.'),
-            color = BrandColors.CreamWhiteMuted,
-            fontSize = 11.sp
-        )
+        if (state.pendingCop > 0) {
+            Text(
+                text = "+ ${formatCop(state.pendingCop)} pendientes de entrega",
+                color = BrandColors.CreamWhiteMuted,
+                fontSize = 12.sp,
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+            )
+        }
     }
 }
 
 @Composable
-private fun ActionsRow(
-    onWithdraw: () -> Unit,
-    onHistory: () -> Unit,
-    onInvoices: () -> Unit
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
-        ActionPill(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Outlined.AccountBalanceWallet,
-            label = "Retirar",
-            background = Color(0xFFC9A24A),
-            contentColor = Color.White,
-            onClick = onWithdraw
-        )
-        ActionPill(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Outlined.History,
-            label = "Historial",
-            background = BrandColors.CardBackground,
-            contentColor = BrandColors.TextPrimary,
-            onClick = onHistory
-        )
-        ActionPill(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Outlined.Receipt,
-            label = "Facturas",
-            background = BrandColors.CardBackground,
-            contentColor = BrandColors.TextPrimary,
-            onClick = onInvoices
-        )
-    }
-}
-
-@Composable
-private fun ActionPill(
-    modifier: Modifier = Modifier,
-    icon: ImageVector,
-    label: String,
-    background: Color,
-    contentColor: Color,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = modifier
-            .background(background, RoundedCornerShape(50))
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.size(6.dp))
-        Text(text = label, color = contentColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun MetricMini(
+private fun MetricTile(
     modifier: Modifier = Modifier,
     label: String,
-    value: String,
-    delta: String?
+    value: String
 ) {
     Column(
         modifier = modifier
@@ -399,51 +277,113 @@ private fun MetricMini(
             .padding(BrandSpacing.md),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text(text = label, color = BrandColors.TextSecondary, fontSize = 11.sp)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = value,
-                color = BrandColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Serif
-            )
-            if (delta != null) {
-                Spacer(modifier = Modifier.size(6.dp))
-                Text(
-                    text = delta,
-                    color = BrandColors.FarmerPrimary,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
+        Text(
+            text = label,
+            color = BrandColors.TextSecondary,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+        Text(
+            text = value,
+            color = BrandColors.TextPrimary,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif
+        )
     }
 }
 
 @Composable
-private fun MovementRow(movement: MockMovement, onClick: () -> Unit) {
-    val (iconBg, iconTint, icon) = when (movement.type) {
-        MovementType.INCOME -> Triple(Color(0xFFE8F4EC), BrandColors.FarmerPrimary, Icons.Outlined.Add)
-        MovementType.OUTCOME -> Triple(Color(0xFFF6D9D2), Color(0xFFB23A3A), Icons.Outlined.Remove)
-        MovementType.PENDING -> Triple(Color(0xFFFFF1B8), Color(0xFF8C6E1F), Icons.Outlined.AccessTime)
+private fun EmptyMovements() {
+    Column(
+        modifier = Modifier
+            .padding(horizontal = BrandSpacing.lg)
+            .fillMaxWidth()
+            .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
+            .padding(BrandSpacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
+    ) {
+        Box(
+            modifier = Modifier.size(64.dp).background(BrandColors.InputBackground, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.History,
+                contentDescription = null,
+                tint = BrandColors.TextSecondary,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Text(
+            text = "Aún sin movimientos",
+            color = BrandColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "Cuando vendas tu primer café, lo verás aquí.",
+            color = BrandColors.TextSecondary,
+            fontSize = 12.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
+}
+
+/** Fila de movimiento: una venta entregada o en proceso. */
+@Composable
+private fun MovementRow(order: Order) {
+    val isDelivered = order.status == OrderStatus.DELIVERED
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
             .padding(BrandSpacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.size(36.dp).background(iconBg, CircleShape),
-            contentAlignment = Alignment.Center
-        ) { Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp)) }
-        Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-            Text(text = movement.title, color = BrandColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(text = movement.subtitle, color = BrandColors.TextSecondary, fontSize = 11.sp)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Venta #${order.id.take(8).uppercase()}",
+                color = BrandColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "${order.compradorName.ifBlank { "Comprador" }} · ${
+                    formatRelativeDate(order.createdAtEpochMillis)
+                }",
+                color = BrandColors.TextSecondary,
+                fontSize = 11.sp
+            )
+            Text(
+                text = if (isDelivered) "✓ Entregado" else "⏳ ${order.status.label}",
+                color = if (isDelivered) BrandColors.FarmerPrimary else BrandColors.TextSecondary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
-        Text(text = "›", color = BrandColors.TextSecondary, fontSize = 18.sp)
+        Text(
+            text = (if (isDelivered) "+" else "") + formatCop(order.totalCop.toLong()),
+            color = if (isDelivered) BrandColors.FarmerPrimary else BrandColors.TextSecondary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif
+        )
+    }
+}
+
+private fun formatCop(amount: Long): String =
+    "$" + "%,d".format(amount).replace(',', '.')
+
+private fun formatRelativeDate(epochMillis: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - epochMillis
+    val oneDay = 24L * 60 * 60 * 1000
+    val dateFmt = SimpleDateFormat("dd MMM", Locale("es", "CO"))
+    return when {
+        diff < oneDay -> "Hoy"
+        diff < 2 * oneDay -> "Ayer"
+        else -> dateFmt.format(Date(epochMillis))
     }
 }

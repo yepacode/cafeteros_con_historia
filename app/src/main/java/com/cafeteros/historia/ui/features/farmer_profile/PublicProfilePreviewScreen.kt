@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,7 +43,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -56,13 +60,28 @@ import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
 
+/**
+ * Pantalla "Ver mi perfil como me ven los compradores".
+ *
+ * Lee el perfil del caficultor logueado + su finca y los pasa a
+ * [PublicProfilePreviewScreen]. Reutiliza [MyProfileViewModel] para no
+ * duplicar la lógica de combinación user+farm.
+ */
 class PublicProfilePreviewActivity : ComponentActivity() {
+
+    private val viewModel: PublicProfilePreviewViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CafeterosTheme {
+                val state by viewModel.uiState
+                    .collectAsStateWithLifecycle()
                 PublicProfilePreviewScreen(
+                    userName = state.userName,
+                    farm = state.farm,
+                    products = state.products,
                     onClose = ::finish,
                     onEdit = {
                         EditFarmActivity.start(this)
@@ -82,9 +101,12 @@ class PublicProfilePreviewActivity : ComponentActivity() {
 
 @Composable
 fun PublicProfilePreviewScreen(
-    modifier: Modifier = Modifier,
+    userName: String,
+    farm: com.cafeteros.historia.data.model.FarmProfile,
+    products: List<com.cafeteros.historia.data.model.Product>,
     onClose: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize().background(BrandColors.AuthBackground).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 96.dp)) {
@@ -126,16 +148,26 @@ fun PublicProfilePreviewScreen(
                 )
             }
 
-            // Hero con paisaje + avatar grande
+            // Hero con foto real de la finca (Base64) o color de fallback + avatar grande
             Spacer(modifier = Modifier.height(BrandSpacing.md))
             Box(
                 modifier = Modifier.fillMaxWidth().height(180.dp).padding(horizontal = BrandSpacing.lg)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(BrandColors.FarmerPrimary, RoundedCornerShape(16.dp))
-                )
+                if (farm.principalPhotoBase64 != null) {
+                    com.cafeteros.historia.ui.components.Base64Image(
+                        base64 = farm.principalPhotoBase64,
+                        contentDescription = "Foto de ${farm.name}",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(16.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(BrandColors.FarmerPrimary, RoundedCornerShape(16.dp))
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -146,7 +178,20 @@ fun PublicProfilePreviewScreen(
                         .background(BrandColors.CoffeeBrown, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
+                    if (farm.farmerPhotoBase64 != null) {
+                        com.cafeteros.historia.ui.components.Base64Image(
+                            base64 = farm.farmerPhotoBase64,
+                            contentDescription = "Foto del caficultor",
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        )
+                    } else {
+                        Icon(
+                            Icons.Outlined.Person,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(56.dp)
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(56.dp))
@@ -157,18 +202,25 @@ fun PublicProfilePreviewScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "Don Alberto Ramírez",
+                    text = userName.ifBlank { "—" },
                     style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.LocationOn, contentDescription = null, tint = BrandColors.FarmerPrimary, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.size(4.dp))
-                    Text(text = "Finca La Esperanza", color = BrandColors.TextSecondary, fontSize = 13.sp)
+                    Text(
+                        text = farm.name.ifBlank { "Completa tu finca" },
+                        color = BrandColors.TextSecondary,
+                        fontSize = 13.sp
+                    )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     PreviewBadge(label = "VERIFICADO", bg = Color(0xFFE8F4EC), fg = BrandColors.FarmerPrimary)
-                    PreviewBadge(label = "HUILA", bg = Color(0xFFC9A24A), fg = Color.White)
-                    PreviewBadge(label = "DESDE 2026", bg = BrandColors.IndicatorInactive, fg = BrandColors.TextPrimary)
+                    PreviewBadge(
+                        label = farm.region.uppercase().ifBlank { "SIN REGIÓN" },
+                        bg = Color(0xFFC9A24A),
+                        fg = Color.White
+                    )
                 }
             }
 
@@ -179,30 +231,40 @@ fun PublicProfilePreviewScreen(
                 Text(text = "LEGADO FAMILIAR", color = BrandColors.TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "La historia de Don Alberto",
-                    style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary, lineHeight = 28.sp)
+                    text = farm.title.ifBlank { "Mi historia" },
+                    style = TextStyle(
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandColors.TextPrimary,
+                        lineHeight = 28.sp
+                    )
                 )
                 Spacer(modifier = Modifier.height(BrandSpacing.sm))
 
                 // Cita
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(BrandColors.CardBackground, RoundedCornerShape(8.dp))
-                        .padding(BrandSpacing.md)
-                ) {
-                    Text(
-                        text = "\"Cada grano lleva 40 años de tradición y el alma de nuestra tierra.\"",
-                        color = BrandColors.TextPrimary,
-                        fontSize = 14.sp,
-                        fontStyle = FontStyle.Italic,
-                        fontFamily = FontFamily.Serif,
-                        lineHeight = 20.sp
-                    )
+                if (farm.quote.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(BrandColors.CardBackground, RoundedCornerShape(8.dp))
+                            .padding(BrandSpacing.md)
+                    ) {
+                        Text(
+                            text = "\"${farm.quote}\"",
+                            color = BrandColors.TextPrimary,
+                            fontSize = 14.sp,
+                            fontStyle = FontStyle.Italic,
+                            fontFamily = FontFamily.Serif,
+                            lineHeight = 20.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(BrandSpacing.sm))
                 }
-                Spacer(modifier = Modifier.height(BrandSpacing.sm))
                 Text(
-                    text = "En las faldas de la cordillera central, Don Alberto ha cultivado la excelencia desde que era un niño. Su finca, La Esperanza, es más que tierra; es un santuario donde la biodiversidad y el café conviven en perfecta armonía. Con técnicas artesanales heredadas, cada cosecha es un tributo a la paciencia.",
+                    text = farm.story.ifBlank {
+                        "Aún no has escrito tu historia. Toca \"Editar\" para contarle a los compradores quién eres y cómo cultivas tu café."
+                    },
                     color = BrandColors.TextSecondary,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -238,7 +300,7 @@ fun PublicProfilePreviewScreen(
                 }
             }
 
-            // Variedades
+            // Productos reales del caficultor
             Spacer(modifier = Modifier.height(BrandSpacing.md))
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = BrandSpacing.lg),
@@ -246,18 +308,38 @@ fun PublicProfilePreviewScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Nuestras Variedades",
+                    text = "Nuestros Productos (${products.size})",
                     style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
                 )
-                Text(text = "Ver todos", color = BrandColors.FarmerPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(modifier = Modifier.height(BrandSpacing.sm))
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = BrandSpacing.lg),
-                horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
-            ) {
-                VarietyCard(modifier = Modifier.weight(1f), name = "Caturra Lavado", profile = "Perfil cítrico, dulce", price = "\$45.000 COP")
-                VarietyCard(modifier = Modifier.weight(1f), name = "Bourbon Rosado", profile = "Notas florales, miel", price = "\$58.000 COP")
+            if (products.isEmpty()) {
+                Text(
+                    text = "Aún no has publicado productos. Crea uno desde \"Mis Cosechas\" para que los compradores vean tu café.",
+                    color = BrandColors.TextSecondary,
+                    fontSize = 12.sp,
+                    fontStyle = FontStyle.Italic,
+                    modifier = Modifier.padding(horizontal = BrandSpacing.lg)
+                )
+            } else {
+                Column(
+                    modifier = Modifier.padding(horizontal = BrandSpacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
+                ) {
+                    products.take(4).chunked(2).forEach { rowProducts ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
+                            rowProducts.forEach { p ->
+                                PublicProductCard(
+                                    modifier = Modifier.weight(1f),
+                                    product = p
+                                )
+                            }
+                            if (rowProducts.size == 1) {
+                                Box(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
             }
 
             // Lo que dicen
@@ -334,21 +416,51 @@ private fun ProcessStep(icon: ImageVector, label: String) {
     }
 }
 
+/**
+ * Card de producto real del caficultor para la vista de perfil público.
+ * Muestra foto (Base64), nombre, descripción corta y precio formateado.
+ */
 @Composable
-private fun VarietyCard(modifier: Modifier = Modifier, name: String, profile: String, price: String) {
+private fun PublicProductCard(
+    modifier: Modifier = Modifier,
+    product: com.cafeteros.historia.data.model.Product
+) {
     Column(
         modifier = modifier
             .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
             .padding(BrandSpacing.sm)
     ) {
-        Box(
-            modifier = Modifier.fillMaxWidth().height(100.dp).background(BrandColors.InputBackground, RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center
-        ) { Text(text = "📷", fontSize = 28.sp) }
+        com.cafeteros.historia.ui.components.Base64Image(
+            base64 = product.imageBase64,
+            contentDescription = product.name,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
         Spacer(modifier = Modifier.height(6.dp))
-        Text(text = name, color = BrandColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif)
-        Text(text = profile, color = BrandColors.TextSecondary, fontSize = 10.sp)
+        Text(
+            text = product.name,
+            color = BrandColors.TextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = FontFamily.Serif,
+            maxLines = 1
+        )
+        if (product.shortDescription.isNotBlank()) {
+            Text(
+                text = product.shortDescription,
+                color = BrandColors.TextSecondary,
+                fontSize = 10.sp,
+                maxLines = 2
+            )
+        }
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = price, color = BrandColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = "$" + "%,d".format(product.priceCop).replace(',', '.') + " COP",
+            color = BrandColors.TextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }

@@ -7,8 +7,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,62 +27,60 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.HourglassEmpty
-import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Park
-import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cafeteros.historia.data.model.SUGGESTED_CERTIFICATIONS
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
 
-private data class CertItem(
-    val name: String,
-    val validUntil: String,
-    val emoji: String,
-    val hasDocument: Boolean = false
-)
-
-private val ACTIVE_CERTS = listOf(
-    CertItem("Orgánico - ECOCERT", "Válido hasta: 15 Nov 2026", "🌱", hasDocument = true),
-    CertItem("Rainforest Alliance", "Válido hasta: 20 Ene 2027", "🌲"),
-    CertItem("Denominación de Origen Huila", "Válido hasta: 05 Mar 2028", "🏅")
-)
-
-private data class AvailableCert(val name: String, val description: String, val emoji: String)
-
-private val AVAILABLE_CERTS = listOf(
-    AvailableCert("UTZ Certified", "Prácticas agrícolas sostenibles y mejores.", "⚡"),
-    AvailableCert("Mujeres Cafeteras", "Empoderamiento y equidad en el campo.", "👩"),
-    AvailableCert("Bird Friendly", "Protección de biodiversidad y hábitats.", "🌿"),
-    AvailableCert("4C Association", "Estándar básico para sostenibilidad.", "🌍")
-)
-
+/**
+ * Activity contenedora de [CertificationsScreen]. Lee/escribe las
+ * certificaciones de la finca a través de [CertificationsViewModel] (que
+ * a su vez delega en [com.cafeteros.historia.data.repository.FarmRepository]).
+ */
 class CertificationsActivity : ComponentActivity() {
+
+    private val viewModel: CertificationsViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CafeterosTheme {
-                CertificationsScreen(
-                    onBack = ::finish,
-                    onAction = { action ->
-                        Toast.makeText(this, "Próximamente: $action", Toast.LENGTH_SHORT).show()
+                val active by viewModel.activeCertifications.collectAsStateWithLifecycle()
+                val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
+                val toast by viewModel.toast.collectAsStateWithLifecycle()
+
+                LaunchedEffect(toast) {
+                    toast?.let {
+                        Toast.makeText(this@CertificationsActivity, it, Toast.LENGTH_SHORT).show()
+                        viewModel.consumeToast()
                     }
+                }
+
+                CertificationsScreen(
+                    activeCerts = active,
+                    suggestions = SUGGESTED_CERTIFICATIONS.filter { it !in active },
+                    isSaving = isSaving,
+                    onBack = ::finish,
+                    onAdd = viewModel::add,
+                    onRemove = viewModel::remove
                 )
             }
         }
@@ -95,11 +93,31 @@ class CertificationsActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Pantalla de gestión de certificaciones de la finca.
+ *
+ * Stateless: recibe la lista actual + sugerencias y delega cambios. La
+ * persistencia la hace el ViewModel contenedor llamando al
+ * [com.cafeteros.historia.data.repository.FarmRepository].
+ *
+ * @param activeCerts certificaciones que el caficultor ya declaró.
+ * @param suggestions catálogo predefinido filtrado para excluir las que ya
+ *  están activas.
+ * @param isSaving deshabilita los tap mientras se persiste en Firestore
+ *  para evitar dobles guardados.
+ * @param onBack cerrar la activity.
+ * @param onAdd agregar una certificación sugerida (o un texto libre).
+ * @param onRemove quitar una certificación activa.
+ */
 @Composable
 fun CertificationsScreen(
-    modifier: Modifier = Modifier,
+    activeCerts: List<String>,
+    suggestions: List<String>,
+    isSaving: Boolean,
     onBack: () -> Unit,
-    onAction: (String) -> Unit
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
@@ -107,24 +125,7 @@ fun CertificationsScreen(
             .background(BrandColors.AuthBackground)
             .systemBarsPadding()
     ) {
-        // Top bar
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver", tint = BrandColors.TextPrimary)
-            }
-            Text(
-                text = "Certificaciones",
-                modifier = Modifier.weight(1f),
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = BrandColors.TextPrimary),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-            IconButton(onClick = { onAction("Más opciones") }) {
-                Icon(Icons.Outlined.MoreVert, contentDescription = "Más", tint = BrandColors.TextPrimary)
-            }
-        }
+        TopBar(onBack = onBack)
 
         Column(
             modifier = Modifier
@@ -134,71 +135,24 @@ fun CertificationsScreen(
                 .padding(horizontal = BrandSpacing.lg),
             verticalArrangement = Arrangement.spacedBy(BrandSpacing.md)
         ) {
-            Spacer(modifier = Modifier.height(BrandSpacing.xs))
-            Text(
-                text = "Mis certificaciones activas (${ACTIVE_CERTS.size})",
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
-            )
-            ACTIVE_CERTS.forEach { cert -> ActiveCertCard(cert = cert, onView = { onAction("Ver ${cert.name}") }) }
+            Spacer(modifier = Modifier.height(BrandSpacing.sm))
 
-            // Add certification (dashed)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(width = 1.dp, color = BrandColors.IndicatorInactive, shape = RoundedCornerShape(12.dp))
-                    .clickable { onAction("Agregar certificación") }
-                    .padding(vertical = BrandSpacing.md),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(24.dp).background(BrandColors.FarmerPrimary, androidx.compose.foundation.shape.CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Outlined.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp)) }
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(text = "Agregar certificación", color = BrandColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            // Sección activas
+            SectionLabel("CERTIFICACIONES ACTIVAS (${activeCerts.size})")
+            if (activeCerts.isEmpty()) {
+                EmptyState()
+            } else {
+                activeCerts.forEach { cert ->
+                    ActiveCertRow(name = cert, isSaving = isSaving, onRemove = { onRemove(cert) })
                 }
             }
 
-            Text(
-                text = "En verificación (1)",
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
-            )
-            InVerificationCard(name = "Fair Trade", subtitle = "Enviado hace 2 días")
-
-            Text(
-                text = "Certificaciones que puedes obtener",
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary, lineHeight = 22.sp)
-            )
-            AVAILABLE_CERTS.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
-                    row.forEach { cert ->
-                        AvailableCertCard(
-                            modifier = Modifier.weight(1f),
-                            cert = cert,
-                            onLearnMore = { onAction("Saber más sobre ${cert.name}") }
-                        )
-                    }
-                    if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-
-            // Banner academia
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFFE8F4EC), RoundedCornerShape(12.dp))
-                    .clickable { onAction("Academia Origen") }
-                    .padding(BrandSpacing.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(40.dp).background(BrandColors.FarmerPrimary, androidx.compose.foundation.shape.CircleShape),
-                    contentAlignment = Alignment.Center
-                ) { Icon(Icons.Outlined.School, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp)) }
-                Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-                    Text(text = "Aprende cómo certificarte.", color = BrandColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(text = "Curso gratis de 20 min en la Academia Origen.", color = BrandColors.TextSecondary, fontSize = 11.sp)
+            // Sección sugerencias
+            if (suggestions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(BrandSpacing.sm))
+                SectionLabel("DISPONIBLES PARA AGREGAR")
+                suggestions.forEach { cert ->
+                    SuggestionRow(name = cert, isSaving = isSaving, onAdd = { onAdd(cert) })
                 }
             }
 
@@ -208,47 +162,78 @@ fun CertificationsScreen(
 }
 
 @Composable
-private fun ActiveCertCard(cert: CertItem, onView: () -> Unit) {
-    Column(
+private fun TopBar(onBack: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
-            .padding(BrandSpacing.md),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(40.dp).background(BrandColors.InputBackground, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) { Text(text = cert.emoji, fontSize = 22.sp) }
-            Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-                Text(
-                    text = cert.name,
-                    style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
-                )
-                Text(text = cert.validUntil, color = BrandColors.TextSecondary, fontSize = 11.sp)
-            }
-            Icon(Icons.Outlined.MoreVert, contentDescription = null, tint = BrandColors.TextSecondary, modifier = Modifier.size(18.dp))
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = "Volver",
+                tint = BrandColors.TextPrimary
+            )
         }
-        if (cert.hasDocument) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(BrandColors.AuthBackground, RoundedCornerShape(8.dp))
-                    .clickable(onClick = onView)
-                    .padding(horizontal = BrandSpacing.sm, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.Description, contentDescription = null, tint = BrandColors.TextPrimary, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.size(6.dp))
-                Text(text = "VER DOCUMENTO.PDF", color = BrandColors.FarmerPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-            }
-        }
+        Text(
+            text = "Certificaciones",
+            modifier = Modifier.weight(1f),
+            style = TextStyle(
+                fontFamily = FontFamily.Serif,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = BrandColors.TextPrimary
+            )
+        )
     }
 }
 
 @Composable
-private fun InVerificationCard(name: String, subtitle: String) {
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        color = BrandColors.TextSecondary,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.8.sp,
+        modifier = Modifier.padding(vertical = BrandSpacing.xs)
+    )
+}
+
+@Composable
+private fun EmptyState() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
+            .padding(BrandSpacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.WorkspacePremium,
+            contentDescription = null,
+            tint = BrandColors.FarmerPrimary,
+            modifier = Modifier.size(36.dp)
+        )
+        Text(
+            text = "Aún no declaras certificaciones",
+            color = BrandColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "Agrega las que tu finca tenga vigentes para destacar ante compradores.",
+            color = BrandColors.TextSecondary,
+            fontSize = 11.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun ActiveCertRow(name: String, isSaving: Boolean, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -257,52 +242,60 @@ private fun InVerificationCard(name: String, subtitle: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(40.dp).background(Color(0xFFFFF1B8), RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center
-        ) { Icon(Icons.Outlined.HourglassEmpty, contentDescription = null, tint = Color(0xFF8C6E1F), modifier = Modifier.size(20.dp)) }
-        Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-            Text(text = name, color = BrandColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Serif)
-            Text(text = subtitle, color = BrandColors.TextSecondary, fontSize = 11.sp)
-        }
-        Box(
             modifier = Modifier
-                .background(Color(0xFFC9A24A), RoundedCornerShape(50))
-                .padding(horizontal = 10.dp, vertical = 4.dp)
+                .size(36.dp)
+                .background(Color(0xFFE8F4EC), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
         ) {
-            Text(text = "EN REVISIÓN", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Icon(
+                imageVector = Icons.Outlined.WorkspacePremium,
+                contentDescription = null,
+                tint = BrandColors.FarmerPrimary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Text(
+            text = name,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = BrandSpacing.sm),
+            color = BrandColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        IconButton(
+            onClick = onRemove,
+            enabled = !isSaving
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = "Quitar",
+                tint = BrandColors.TextSecondary
+            )
         }
     }
 }
 
 @Composable
-private fun AvailableCertCard(
-    modifier: Modifier = Modifier,
-    cert: AvailableCert,
-    onLearnMore: () -> Unit
-) {
-    Column(
-        modifier = modifier
+private fun SuggestionRow(name: String, isSaving: Boolean, onAdd: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
             .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
+            .clickable(enabled = !isSaving, onClick = onAdd)
             .padding(BrandSpacing.md),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = cert.emoji, fontSize = 22.sp)
         Text(
-            text = cert.name,
+            text = name,
+            modifier = Modifier.weight(1f),
             color = BrandColors.TextPrimary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Serif
+            fontSize = 14.sp
         )
-        Text(text = cert.description, color = BrandColors.TextSecondary, fontSize = 11.sp, lineHeight = 14.sp)
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = "SABER MÁS ›",
-            color = Color(0xFFC9A24A),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp,
-            modifier = Modifier.clickable(onClick = onLearnMore)
+        Icon(
+            imageVector = Icons.Outlined.Add,
+            contentDescription = "Agregar",
+            tint = BrandColors.FarmerPrimary
         )
     }
 }

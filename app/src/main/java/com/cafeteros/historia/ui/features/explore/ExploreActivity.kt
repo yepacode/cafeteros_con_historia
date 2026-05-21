@@ -7,12 +7,18 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cafeteros.historia.ui.features.buyer_profile.BuyerProfileActivity
 import com.cafeteros.historia.ui.features.caficultordetail.CaficultorDetailActivity
 import com.cafeteros.historia.ui.features.caficultorshop.CaficultorShopActivity
 import com.cafeteros.historia.ui.features.cart.CartActivity
 import com.cafeteros.historia.ui.features.coffeemap.CoffeeMapActivity
 import com.cafeteros.historia.ui.features.filters.OriginFiltersActivity
+import com.cafeteros.historia.ui.features.productdetail.ProductDetailActivity
 import com.cafeteros.historia.ui.features.search.SearchActivity
+import com.cafeteros.historia.ui.features.settings.SettingsActivity
 import com.cafeteros.historia.ui.theme.CafeterosTheme
 
 /**
@@ -44,31 +50,47 @@ class ExploreActivity : ComponentActivity() {
      */
     private var currentRoleId: Int = ROLE_ID_COMPRADOR
 
+    private val viewModel: ExploreViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val userName = intent.getStringExtra(EXTRA_USER_NAME)?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_USER_NAME
         currentRoleId = intent.getIntExtra(EXTRA_ROLE_ID, ROLE_ID_COMPRADOR)
 
-        Log.d(TAG, "ExploreActivity iniciada para usuario='$userName', roleId=$currentRoleId")
+        Log.d(TAG, "ExploreActivity iniciada, roleId=$currentRoleId")
 
         setContent {
             CafeterosTheme {
+                val state by viewModel.uiState.collectAsStateWithLifecycle()
                 ExploreScreen(
-                    userName = userName,
-                    onMenuClick = ::openCaficultorShop,
-                    onNotificationsClick = { toast("No tienes notificaciones nuevas") },
+                    userName = state.userFirstName.ifBlank { "comprador" },
+                    regions = state.regions,
+                    caficultores = state.caficultores,
+                    popularProducts = state.popularProducts,
+                    onMenuClick = { BuyerProfileActivity.start(this) },
+                    onSettingsClick = { SettingsActivity.start(this) },
+                    onNotificationsClick = {
+                        com.cafeteros.historia.ui.features.farmer_notifications
+                            .NotificationsActivity.start(this)
+                    },
                     onFilterClick = ::openFilters,
                     onSearchClick = ::openSearch,
                     onCartTabClick = ::openCart,
                     onSeeAllRegions = { openCoffeeMap() },
-                    onSeeAllCaficultores = { openCaficultorDetail("Don Alberto") },
-                    onRegionClick = { toast("Zona ${it.name}") },
-                    onCaficultorClick = { openCaficultorDetail(it.farmName) },
+                    onSeeAllCaficultores = { openCoffeeMap() },
+                    onRegionClick = { openCoffeeMap() },
+                    onCaficultorClick = { card ->
+                        if (card.caficultorUid.isNotBlank()) {
+                            CaficultorDetailActivity.start(this, card.caficultorUid)
+                        }
+                    },
                     onStoryClick = { toast(it.title) },
-                    onProductClick = { toast(it.name) }
+                    onProductClick = { card ->
+                        if (card.productId.isNotBlank()) {
+                            ProductDetailActivity.start(this, card.productId)
+                        }
+                    }
                 )
             }
         }
@@ -84,10 +106,7 @@ class ExploreActivity : ComponentActivity() {
      * rol activo.
      */
     private fun openSearch() {
-        val intent = Intent(this, SearchActivity::class.java).apply {
-            putExtra(SearchActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
+        SearchActivity.start(this)
     }
 
     /**
@@ -107,10 +126,7 @@ class ExploreActivity : ComponentActivity() {
      * del bottom bar. Propaga el [currentRoleId].
      */
     private fun openCart() {
-        val intent = Intent(this, CartActivity::class.java).apply {
-            putExtra(CartActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
+        CartActivity.start(this)
     }
 
     /**
@@ -119,10 +135,7 @@ class ExploreActivity : ComponentActivity() {
      * la cadena del rol activo.
      */
     private fun openFilters() {
-        val intent = Intent(this, OriginFiltersActivity::class.java).apply {
-            putExtra(OriginFiltersActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
+        OriginFiltersActivity.start(this)
     }
 
     /**
@@ -131,10 +144,7 @@ class ExploreActivity : ComponentActivity() {
      * conozca el rol del usuario activo sin tener que reconsultarlo.
      */
     private fun openCoffeeMap() {
-        val intent = Intent(this, CoffeeMapActivity::class.java).apply {
-            putExtra(CoffeeMapActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
+        CoffeeMapActivity.start(this)
     }
 
     /**
@@ -149,11 +159,10 @@ class ExploreActivity : ComponentActivity() {
      * sigue cayendo aquí.
      */
     private fun openCaficultorDetail(caficultorName: String) {
-        val intent = Intent(this, CaficultorDetailActivity::class.java).apply {
-            putExtra(CaficultorDetailActivity.EXTRA_CAFICULTOR_NAME, caficultorName)
-            putExtra(CaficultorDetailActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
+        // ExploreActivity quedó huérfana después de redirigir al comprador
+        // a BuyerCatalog. CaficultorDetailActivity ahora requiere uid de
+        // Firestore, no nombre — este caller no tiene cómo resolverlo.
+        // Se deja como no-op hasta migrar Explore o eliminarla.
     }
 
     companion object {

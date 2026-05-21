@@ -74,22 +74,35 @@ fun ProductCard(
                 .height(150.dp)
                 .background(product.placeholderColor)
         ) {
-            if (product.imageRes != null) {
-                Image(
-                    painter = painterResource(id = product.imageRes),
-                    contentDescription = product.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Outlined.Coffee,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(56.dp)
-                )
+            when {
+                // 1) Foto real desde Firestore (Base64) si vino del ViewModel.
+                product.imageBase64 != null -> {
+                    com.cafeteros.historia.ui.components.Base64Image(
+                        base64 = product.imageBase64,
+                        contentDescription = product.name,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                // 2) Fallback: drawable mock si la card es de sample data.
+                product.imageRes != null -> {
+                    Image(
+                        painter = painterResource(id = product.imageRes),
+                        contentDescription = product.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                // 3) Sin foto: icono decorativo sobre el color de la card.
+                else -> {
+                    Icon(
+                        imageVector = Icons.Outlined.Coffee,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.4f),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(56.dp)
+                    )
+                }
             }
             FavoriteToggleButton(
                 isFavorite = isFavorite,

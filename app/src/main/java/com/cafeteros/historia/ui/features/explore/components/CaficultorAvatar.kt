@@ -51,20 +51,32 @@ fun CaficultorAvatar(
             .border(width = 2.dp, color = BrandColors.AvatarGoldBorder, shape = CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        if (caficultor.avatarRes != null) {
-            Image(
-                painter = painterResource(id = caficultor.avatarRes),
-                contentDescription = caficultor.farmName,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Outlined.Person,
-                contentDescription = caficultor.farmName,
-                tint = Color.White.copy(alpha = 0.65f),
-                modifier = Modifier.size(size * 0.6f)
-            )
+        when {
+            // Foto real del caficultor desde Firestore (Base64).
+            caficultor.avatarBase64 != null -> {
+                com.cafeteros.historia.ui.components.Base64Image(
+                    base64 = caficultor.avatarBase64,
+                    contentDescription = caficultor.farmName,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            // Drawable mock como fallback.
+            caficultor.avatarRes != null -> {
+                Image(
+                    painter = painterResource(id = caficultor.avatarRes),
+                    contentDescription = caficultor.farmName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            else -> {
+                Icon(
+                    imageVector = Icons.Outlined.Person,
+                    contentDescription = caficultor.farmName,
+                    tint = Color.White.copy(alpha = 0.65f),
+                    modifier = Modifier.size(size * 0.6f)
+                )
+            }
         }
     }
 }

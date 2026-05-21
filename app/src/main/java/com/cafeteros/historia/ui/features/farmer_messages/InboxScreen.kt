@@ -1,12 +1,13 @@
 package com.cafeteros.historia.ui.features.farmer_messages
 
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,72 +26,93 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.FilterList
-import androidx.compose.material.icons.outlined.MailOutline
-import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cafeteros.historia.CafeterosApplication
+import com.cafeteros.historia.data.model.Conversation
+import com.cafeteros.historia.data.repository.ConversationRepository
+import com.cafeteros.historia.data.repository.UserRepository
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-private enum class InboxFilter(val label: String) {
-    ALL("Todos"), UNREAD("No leídos"), ARCHIVED("Archivados")
+data class InboxUiState(
+    val conversations: List<Conversation> = emptyList(),
+    val myUid: String = ""
+)
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+class InboxViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val app = application as CafeterosApplication
+    private val userRepository: UserRepository = app.userRepository
+    private val conversationRepository: ConversationRepository = app.conversationRepository
+
+    val uiState: StateFlow<InboxUiState> = flowOf(userRepository.currentUid())
+        .flatMapLatest { uid ->
+            if (uid == null) flowOf(InboxUiState())
+            else conversationRepository.observeMyConversations(uid)
+                .map { InboxUiState(conversations = it, myUid = uid) }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = InboxUiState()
+        )
 }
 
-internal data class MockConversation(
-    val id: String,
-    val sender: String,
-    val preview: String,
-    val time: String,
-    val unreadCount: Int = 0,
-    val isFrequentClient: Boolean = false,
-    val orderTag: String? = null,
-    val isSupport: Boolean = false
-)
-
-internal val MOCK_CONVERSATIONS = listOf(
-    MockConversation("c1", "Origen Soporte", "Su liquidación de cosecha ya está…", "Ahora", isSupport = true),
-    MockConversation("c2", "María González", "Don Alberto, ¿cuál me recomien…", "10:45 AM", unreadCount = 1, isFrequentClient = true, orderTag = "OR-34521"),
-    MockConversation("c3", "Ricardo Silva", "Excelente tostión, recibí el paquete ay…", "Ayer"),
-    MockConversation("c4", "Café de la Luna", "¿Tendrán disponibilidad de 50kg?", "Lun", unreadCount = 2)
-)
-
-private val QUICK_REPLIES = listOf(
-    "Gracias por tu compra" to "Agradecemos tu interés en…",
-    "Tu pedido va en camino" to "Hola, te informamos que…",
-    "Método de cata" to "Este grano resalta notas de…",
-    "Consulta técnica" to "Nuestra finca se encuentra a…"
-)
-
+/**
+ * Activity Inbox: lista de conversaciones del usuario logueado. Sirve
+ * tanto para el caficultor (que recibe mensajes de compradores) como
+ * para el comprador (si en el futuro se agrega un acceso desde su lado).
+ */
 class InboxActivity : ComponentActivity() {
+
+    private val viewModel: InboxViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CafeterosTheme {
+                val state by viewModel.uiState.collectAsStateWithLifecycle()
                 InboxScreen(
+                    state = state,
                     onBack = ::finish,
-                    onConversationTap = { id -> ChatActivity.start(this, id) },
-                    onTemplateTap = { template ->
-                        Toast.makeText(this, "Próximamente: editar plantilla \"$template\"", Toast.LENGTH_SHORT).show()
+                    onConversationTap = { conv ->
+                        ChatActivity.start(
+                            this,
+                            conversationId = conv.id,
+                            partnerName = conv.partnerName(state.myUid),
+                            partnerUid = conv.partnerUid(state.myUid)
+                        )
                     }
                 )
             }
@@ -105,236 +127,167 @@ class InboxActivity : ComponentActivity() {
 }
 
 @Composable
-fun InboxScreen(
-    modifier: Modifier = Modifier,
+private fun InboxScreen(
+    state: InboxUiState,
     onBack: () -> Unit,
-    onConversationTap: (String) -> Unit,
-    onTemplateTap: (String) -> Unit
+    onConversationTap: (Conversation) -> Unit
 ) {
-    var activeFilter by remember { mutableStateOf(InboxFilter.ALL) }
-    val totalCount = MOCK_CONVERSATIONS.size
-    val unreadCount = MOCK_CONVERSATIONS.count { it.unreadCount > 0 }
-    val filtered = when (activeFilter) {
-        InboxFilter.ALL -> MOCK_CONVERSATIONS
-        InboxFilter.UNREAD -> MOCK_CONVERSATIONS.filter { it.unreadCount > 0 }
-        InboxFilter.ARCHIVED -> emptyList()
-    }
-
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(BrandColors.AuthBackground)
             .systemBarsPadding()
     ) {
-        // Top bar
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Outlined.Menu, contentDescription = "Volver", tint = BrandColors.TextPrimary)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Volver",
+                    tint = BrandColors.TextPrimary
+                )
             }
             Text(
-                text = "Buzón de Origen",
+                text = "Mensajes",
                 modifier = Modifier.weight(1f),
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
-            )
-            IconButton(onClick = { /* TODO: buscar */ }) {
-                Icon(Icons.Outlined.Search, contentDescription = "Buscar", tint = BrandColors.TextPrimary)
-            }
-            IconButton(onClick = { /* TODO: filtro */ }) {
-                Icon(Icons.Outlined.FilterList, contentDescription = "Filtros", tint = BrandColors.TextPrimary)
-            }
-        }
-
-        // Banner amarillo
-        if (unreadCount > 0) {
-            Row(
-                modifier = Modifier
-                    .padding(horizontal = BrandSpacing.lg, vertical = BrandSpacing.xs)
-                    .fillMaxWidth()
-                    .background(Color(0xFFFFF1B8), RoundedCornerShape(12.dp))
-                    .padding(horizontal = BrandSpacing.md, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.MailOutline, contentDescription = null, tint = Color(0xFF8C6E1F), modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(
-                    text = "$unreadCount mensajes sin leer",
-                    color = BrandColors.TextPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = "Marcar todos como leídos",
-                    color = Color(0xFF8C6E1F),
-                    fontSize = 11.sp,
+                style = TextStyle(
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { /* TODO */ }
+                    color = BrandColors.TextPrimary
                 )
-            }
+            )
         }
 
-        // Tabs
-        Row(
-            modifier = Modifier.padding(horizontal = BrandSpacing.lg, vertical = BrandSpacing.xs),
-            horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
-        ) {
-            InboxFilter.entries.forEach { f ->
-                val active = f == activeFilter
-                val label = when (f) {
-                    InboxFilter.ALL -> "${f.label} ($totalCount)"
-                    InboxFilter.UNREAD -> "${f.label} ($unreadCount)"
-                    InboxFilter.ARCHIVED -> f.label
-                }
-                Box(
-                    modifier = Modifier
-                        .background(if (active) BrandColors.CoffeeBrown else BrandColors.CardBackground, RoundedCornerShape(50))
-                        .clickable { activeFilter = f }
-                        .padding(horizontal = BrandSpacing.md, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = label,
-                        color = if (active) BrandColors.PrimaryButtonText else BrandColors.TextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+        if (state.conversations.isEmpty()) {
+            EmptyState(modifier = Modifier.weight(1f))
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = BrandSpacing.lg,
+                    vertical = BrandSpacing.sm
+                ),
+                verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
+            ) {
+                items(state.conversations) { conv ->
+                    ConversationRow(
+                        conversation = conv,
+                        myUid = state.myUid,
+                        onTap = { onConversationTap(conv) }
                     )
                 }
             }
-        }
-
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = BrandSpacing.lg, vertical = BrandSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
-        ) {
-            items(filtered) { c ->
-                ConversationRow(conversation = c, onClick = { onConversationTap(c.id) })
-            }
-            item { Spacer(modifier = Modifier.height(BrandSpacing.md)) }
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Respuestas rápidas guardadas",
-                        style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = BrandColors.TextPrimary)
-                    )
-                    Row(
-                        modifier = Modifier.clickable { onTemplateTap("Nueva plantilla") },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Outlined.Add, contentDescription = null, tint = BrandColors.FarmerPrimary, modifier = Modifier.size(14.dp))
-                        Text(text = "Nueva plantilla", color = BrandColors.FarmerPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
-                    QUICK_REPLIES.chunked(2).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
-                            row.forEach { (title, preview) ->
-                                TemplateCard(
-                                    modifier = Modifier.weight(1f),
-                                    title = title,
-                                    preview = preview,
-                                    onClick = { onTemplateTap(title) }
-                                )
-                            }
-                            if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-            item { Spacer(modifier = Modifier.height(BrandSpacing.lg)) }
         }
     }
 }
 
 @Composable
-private fun ConversationRow(conversation: MockConversation, onClick: () -> Unit) {
+private fun EmptyState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(BrandSpacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .background(BrandColors.InputBackground, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.ChatBubbleOutline,
+                contentDescription = null,
+                tint = BrandColors.TextSecondary,
+                modifier = Modifier.size(56.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(BrandSpacing.lg))
+        Text(
+            text = "Sin conversaciones",
+            style = TextStyle(
+                fontFamily = FontFamily.Serif,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = BrandColors.TextPrimary
+            ),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Cuando un comprador te escriba, su conversación aparecerá aquí.",
+            color = BrandColors.TextSecondary,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun ConversationRow(
+    conversation: Conversation,
+    myUid: String,
+    onTap: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(BrandSpacing.sm),
+            .clickable(onClick = onTap)
+            .padding(BrandSpacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Avatar
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .background(if (conversation.isSupport) BrandColors.CoffeeBrown else BrandColors.FarmerPrimary, CircleShape),
+                .size(40.dp)
+                .background(BrandColors.FarmerPrimary, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Outlined.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+            Icon(
+                imageVector = Icons.Outlined.Person,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
         }
-        Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = conversation.sender,
-                    color = BrandColors.TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Serif
-                )
-                if (conversation.isFrequentClient) {
-                    Spacer(modifier = Modifier.size(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xFFFFF1B8), RoundedCornerShape(50))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(text = "Cliente frecuente", color = Color(0xFF8C6E1F), fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-            Text(text = conversation.preview, color = BrandColors.TextSecondary, fontSize = 12.sp, maxLines = 1)
-            if (conversation.orderTag != null) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFFE8F4EC), RoundedCornerShape(50))
-                        .padding(horizontal = 6.dp, vertical = 1.dp)
-                ) {
-                    Text(text = "Pedido #${conversation.orderTag}", color = BrandColors.FarmerPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+        Column(modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = BrandSpacing.sm)) {
+            Text(
+                text = conversation.partnerName(myUid).ifBlank { "Conversación" },
+                color = BrandColors.TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Serif
+            )
+            Text(
+                text = conversation.lastMessage.ifBlank { "(sin mensajes)" },
+                color = BrandColors.TextSecondary,
+                fontSize = 12.sp,
+                maxLines = 1
+            )
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(text = conversation.time, color = BrandColors.TextSecondary, fontSize = 10.sp)
-            if (conversation.unreadCount > 0) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier.size(18.dp).background(Color(0xFFC9A24A), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = conversation.unreadCount.toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+        Text(
+            text = formatTime(conversation.lastMessageAtEpochMillis),
+            color = BrandColors.TextSecondary,
+            fontSize = 11.sp
+        )
     }
 }
 
-@Composable
-private fun TemplateCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    preview: String,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(BrandSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(text = title, color = BrandColors.TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        Text(text = preview, color = BrandColors.TextSecondary, fontSize = 10.sp, maxLines = 2)
+private fun formatTime(epochMillis: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - epochMillis
+    val oneDay = 24L * 60 * 60 * 1000
+    val timeFmt = SimpleDateFormat("HH:mm", Locale("es", "CO"))
+    val dateFmt = SimpleDateFormat("dd MMM", Locale("es", "CO"))
+    return when {
+        diff < oneDay -> timeFmt.format(Date(epochMillis))
+        diff < 2 * oneDay -> "Ayer"
+        else -> dateFmt.format(Date(epochMillis))
     }
 }

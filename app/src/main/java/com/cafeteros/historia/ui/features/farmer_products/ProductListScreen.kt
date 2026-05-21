@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,12 +26,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -38,31 +37,34 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
-import com.cafeteros.historia.ui.features.farmer_products.model.Product
-import com.cafeteros.historia.ui.features.farmer_products.model.ProductsStore
+import com.cafeteros.historia.data.model.Product
+import com.cafeteros.historia.ui.components.Base64Image
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 
 /**
- * Lista de productos del caficultor. Si la store está vacía, muestra el
+ * Lista de productos del caficultor. Si la lista está vacía, muestra el
  * estado "Aún no tienes productos" inline; si hay productos, los pinta
  * como tarjetas tocables (cada toque abre la edición).
  *
- * Se conecta a [ProductsStore.productsFlow] para reaccionar
- * automáticamente cuando se agrega/edita/borra un producto en otra
- * activity.
+ * La pantalla es **stateless**: recibe la lista vía [products] y delega
+ * acciones al contenedor. El observador de Firestore vive en
+ * [ProductListViewModel].
+ *
+ * @param products productos del caficultor logueado, observados desde el
+ *  repositorio. Vacía mientras carga la primera emisión de Firestore.
+ * @param onBack cierra la activity.
+ * @param onCreateProduct abre el wizard en modo creación.
+ * @param onEditProduct abre el wizard en modo edición para el producto dado.
  */
 @Composable
 fun ProductListScreen(
-    modifier: Modifier = Modifier,
+    products: List<Product>,
     onBack: () -> Unit,
     onCreateProduct: () -> Unit,
-    onEditProduct: (Product) -> Unit
+    onEditProduct: (Product) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val products by ProductsStore.productsFlow.collectAsStateWithLifecycle()
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -81,7 +83,7 @@ fun ProductListScreen(
                         .fillMaxWidth()
                         .padding(horizontal = BrandSpacing.lg),
                     verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    contentPadding = PaddingValues(
                         top = BrandSpacing.sm,
                         bottom = 96.dp
                     )
@@ -224,7 +226,10 @@ private fun EmptyProducts(
     }
 }
 
-/** Tarjeta de producto en la lista: foto placeholder + nombre + precio + estado. */
+/**
+ * Tarjeta de producto en la lista: foto (Base64) + nombre + precio + estado.
+ * Tap → abre edición.
+ */
 @Composable
 private fun ProductRow(product: Product, onClick: () -> Unit) {
     Row(
@@ -235,28 +240,14 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
             .padding(BrandSpacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (product.photoUri != null) {
-            AsyncImage(
-                model = product.photoUri,
-                contentDescription = product.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BrandColors.InputBackground, RoundedCornerShape(8.dp))
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(BrandColors.InputBackground, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "📷", fontSize = 22.sp)
-            }
-        }
+        Base64Image(
+            base64 = product.imageBase64,
+            contentDescription = product.name,
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
         Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
-            // Badge "ACTIVO"/"PAUSADO"
             Text(
                 text = if (product.isPaused) "PAUSADO" else "ACTIVO",
                 color = if (product.isPaused) BrandColors.TextSecondary else BrandColors.FarmerPrimary,
@@ -274,7 +265,8 @@ private fun ProductRow(product: Product, onClick: () -> Unit) {
                 )
             )
             Text(
-                text = "$" + "%,d".format(product.priceCop).replace(',', '.') + " · Stock " + product.stockUnits,
+                text = "$" + "%,d".format(product.priceCop).replace(',', '.') +
+                        " · Stock " + product.stockUnits,
                 color = BrandColors.TextSecondary,
                 fontSize = 12.sp
             )

@@ -1,11 +1,13 @@
 package com.cafeteros.historia.ui.features.farmer_notifications
 
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,84 +27,86 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.AttachMoney
-import androidx.compose.material.icons.outlined.Celebration
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.cafeteros.historia.ui.features.farmer_messages.InboxActivity
-import com.cafeteros.historia.ui.features.farmer_sales.SalesActivity
-import com.cafeteros.historia.ui.features.farmer_wallet.WalletActivity
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cafeteros.historia.CafeterosApplication
+import com.cafeteros.historia.data.model.Notification
+import com.cafeteros.historia.data.model.NotificationType
+import com.cafeteros.historia.data.repository.NotificationRepository
+import com.cafeteros.historia.data.repository.UserRepository
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-private enum class NotifTab(val label: String) {
-    ALL("Todas"), SALES("Ventas"), MESSAGES("Mensajes"), SYSTEM("Sistema")
+/**
+ * ViewModel: observa las notificaciones del usuario logueado (cualquier
+ * rol — la misma pantalla sirve para comprador y caficultor).
+ */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+class NotificationsViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val app = application as CafeterosApplication
+    private val userRepository: UserRepository = app.userRepository
+    private val notificationRepository: NotificationRepository = app.notificationRepository
+
+    val notifications: StateFlow<List<Notification>> = flowOf(userRepository.currentUid())
+        .flatMapLatest { uid ->
+            if (uid == null) flowOf(emptyList())
+            else notificationRepository.observeForUser(uid)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    fun markAsRead(id: String) {
+        viewModelScope.launch { notificationRepository.markAsRead(id) }
+    }
 }
 
-enum class NotifKind { SALE, MESSAGE, REVIEW, MONEY, STOCK, TIP, MILESTONE, DOCUMENT }
-
-private data class MockNotification(
-    val id: String,
-    val title: String,
-    val body: String,
-    val timeAgo: String,
-    val kind: NotifKind,
-    val unread: Boolean,
-    val highlight: Boolean = false
-)
-
-private val MOCK_NOTIFICATIONS: List<MockNotification> = listOf(
-    MockNotification("n1", "Nueva venta", "María G. compró Café Huila 250g ×2", "5 MIN AGO", NotifKind.SALE, true, highlight = true),
-    MockNotification("n2", "Nuevo mensaje", "María G. te escribió", "AHORA", NotifKind.MESSAGE, true, highlight = true),
-    MockNotification("n3", "Nueva reseña", "★★★★★ por Café Nariño", "2H", NotifKind.REVIEW, true),
-    MockNotification("n4", "Retiro confirmado", "\$500.000 en tu cuenta Bancolombia", "1D", NotifKind.MONEY, false),
-    MockNotification("n5", "Stock bajo", "Café Huila 250g: solo 3 unidades", "2D", NotifKind.STOCK, false),
-    MockNotification("n6", "Nuevo consejo", "Cómo tomar mejores fotos de tu café", "3D", NotifKind.TIP, false),
-    MockNotification("n7", "¡Felicidades!", "Superaste tus ventas del mes pasado", "5D", NotifKind.MILESTONE, false),
-    MockNotification("n8", "RUT por vencer", "Actualiza tu RUT en los próximos 5 días", "1W", NotifKind.DOCUMENT, false)
-)
-
 class NotificationsActivity : ComponentActivity() {
+
+    private val viewModel: NotificationsViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CafeterosTheme {
+                val notifs by viewModel.notifications.collectAsStateWithLifecycle()
                 NotificationsScreen(
+                    notifications = notifs,
                     onBack = ::finish,
-                    onMarkAllRead = ::finish,
-                    onTap = { kind ->
-                        when (kind) {
-                            NotifKind.MESSAGE -> InboxActivity.start(this)
-                            NotifKind.SALE -> SalesActivity.start(this)
-                            NotifKind.MONEY -> WalletActivity.start(this)
-                            else -> { /* no-op para los demás */ }
-                        }
-                    }
+                    onNotificationTap = { id -> viewModel.markAsRead(id) }
                 )
             }
         }
@@ -116,141 +120,181 @@ class NotificationsActivity : ComponentActivity() {
 }
 
 @Composable
-fun NotificationsScreen(
-    modifier: Modifier = Modifier,
+private fun NotificationsScreen(
+    notifications: List<Notification>,
     onBack: () -> Unit,
-    onMarkAllRead: () -> Unit,
-    onTap: (kind: NotifKind) -> Unit
+    onNotificationTap: (id: String) -> Unit
 ) {
-    var activeTab by remember { mutableStateOf(NotifTab.ALL) }
-    val filtered = MOCK_NOTIFICATIONS.filter { matchesTab(it.kind, activeTab) }
-
+    val unread = notifications.count { !it.read }
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .background(BrandColors.AuthBackground)
             .systemBarsPadding()
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver", tint = BrandColors.TextPrimary)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Volver",
+                    tint = BrandColors.TextPrimary
+                )
             }
-            Text(
-                text = "Notificaciones",
-                modifier = Modifier.weight(1f),
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
-            )
-            TextButton(onClick = onMarkAllRead) {
-                Text(text = "Marcar como leído", color = BrandColors.TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        // Tabs
-        Row(
-            modifier = Modifier.padding(horizontal = BrandSpacing.lg, vertical = BrandSpacing.xs),
-            horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
-        ) {
-            NotifTab.entries.forEach { t ->
-                val active = t == activeTab
-                Box(
-                    modifier = Modifier
-                        .background(if (active) BrandColors.CoffeeBrown else BrandColors.CardBackground, RoundedCornerShape(50))
-                        .clickable { activeTab = t }
-                        .padding(horizontal = BrandSpacing.md, vertical = 8.dp)
-                ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Notificaciones",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandColors.TextPrimary
+                    )
+                )
+                if (unread > 0) {
                     Text(
-                        text = t.label,
-                        color = if (active) BrandColors.PrimaryButtonText else BrandColors.TextPrimary,
-                        fontSize = 12.sp,
+                        text = "$unread sin leer",
+                        color = BrandColors.FarmerPrimary,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = BrandSpacing.lg, vertical = BrandSpacing.sm),
-            verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
-        ) {
-            items(filtered) { n ->
-                NotificationRow(notif = n, onClick = { onTap(n.kind) })
+        if (notifications.isEmpty()) {
+            EmptyState(modifier = Modifier.weight(1f))
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = BrandSpacing.lg,
+                    vertical = BrandSpacing.sm
+                ),
+                verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
+            ) {
+                items(notifications) { notif ->
+                    NotificationRow(notif = notif, onTap = { onNotificationTap(notif.id) })
+                }
             }
-            item { Spacer(modifier = Modifier.height(BrandSpacing.lg)) }
         }
     }
 }
 
-private fun matchesTab(kind: NotifKind, tab: NotifTab): Boolean = when (tab) {
-    NotifTab.ALL -> true
-    NotifTab.SALES -> kind == NotifKind.SALE || kind == NotifKind.MONEY
-    NotifTab.MESSAGES -> kind == NotifKind.MESSAGE || kind == NotifKind.REVIEW
-    NotifTab.SYSTEM -> kind == NotifKind.STOCK || kind == NotifKind.TIP || kind == NotifKind.MILESTONE || kind == NotifKind.DOCUMENT
+@Composable
+private fun EmptyState(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(BrandSpacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .background(BrandColors.InputBackground, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Notifications,
+                contentDescription = null,
+                tint = BrandColors.TextSecondary,
+                modifier = Modifier.size(56.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(BrandSpacing.lg))
+        Text(
+            text = "Sin notificaciones",
+            style = TextStyle(
+                fontFamily = FontFamily.Serif,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = BrandColors.TextPrimary
+            ),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Cuando recibas pedidos, reseñas o avisos importantes, aparecerán aquí.",
+            color = BrandColors.TextSecondary,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center
+        )
+    }
 }
 
 @Composable
-private fun NotificationRow(notif: MockNotification, onClick: () -> Unit) {
-    val (iconBg, iconTint, icon) = iconForKind(notif.kind)
-    val rowBg = if (notif.highlight) Color(0xFFFFF8DC) else BrandColors.CardBackground
+private fun NotificationRow(notif: Notification, onTap: () -> Unit) {
+    val (icon, tint) = when (notif.type) {
+        NotificationType.NEW_ORDER -> Icons.Outlined.ShoppingBag to BrandColors.FarmerPrimary
+        NotificationType.ORDER_STATUS_CHANGED -> Icons.Outlined.ShoppingBag to BrandColors.CoffeeBrown
+        NotificationType.NEW_REVIEW -> Icons.Outlined.Star to Color(0xFFC9A24A)
+        NotificationType.LOW_STOCK -> Icons.Outlined.WarningAmber to Color(0xFFB23A3A)
+        NotificationType.GENERIC -> Icons.Outlined.Notifications to BrandColors.TextSecondary
+    }
+    val bgColor =
+        if (notif.read) BrandColors.CardBackground
+        else BrandColors.InfoBannerBackground
 
-    // Box exterior simula el "borde izquierdo dorado" cuando highlight=true.
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = if (notif.highlight) Color(0xFFC9A24A) else Color.Transparent,
-                shape = RoundedCornerShape(12.dp)
-            )
-            .padding(start = if (notif.highlight) 4.dp else 0.dp)
+            .background(bgColor, RoundedCornerShape(12.dp))
+            .clickable(onClick = onTap)
+            .padding(BrandSpacing.md),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(rowBg, RoundedCornerShape(12.dp))
-                .clickable(onClick = onClick)
-                .padding(BrandSpacing.md),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
         Box(
-            modifier = Modifier.size(44.dp).background(iconBg, CircleShape),
+            modifier = Modifier
+                .size(40.dp)
+                .background(tint.copy(alpha = 0.15f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
+            Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         }
-        Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
+        Column(modifier = Modifier
+            .weight(1f)
+            .padding(start = BrandSpacing.sm)) {
             Text(
                 text = notif.title,
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
+                color = BrandColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = if (notif.read) FontWeight.Medium else FontWeight.Bold
             )
-            Text(text = notif.body, color = BrandColors.TextSecondary, fontSize = 12.sp, lineHeight = 16.sp)
-        }
-        Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = notif.timeAgo,
+                text = notif.body,
                 color = BrandColors.TextSecondary,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.3.sp
+                fontSize = 12.sp
             )
-            if (notif.unread) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Box(modifier = Modifier.size(8.dp).background(Color(0xFFC9A24A), CircleShape))
-            }
+            Text(
+                text = formatRelativeDate(notif.createdAtEpochMillis),
+                color = BrandColors.TextSecondary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            )
         }
-        } // cierre Row
-    } // cierre Box
+        if (!notif.read) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(BrandColors.FarmerPrimary, CircleShape)
+            )
+        }
+    }
 }
 
-private fun iconForKind(kind: NotifKind): Triple<Color, Color, ImageVector> = when (kind) {
-    NotifKind.SALE -> Triple(Color(0xFFC9A24A), Color.White, Icons.Outlined.Inventory2)
-    NotifKind.MESSAGE -> Triple(Color(0xFFC2EBD3), BrandColors.FarmerPrimary, Icons.Outlined.ChatBubbleOutline)
-    NotifKind.REVIEW -> Triple(Color(0xFFFFE9A8), Color(0xFF8C6E1F), Icons.Outlined.Star)
-    NotifKind.MONEY -> Triple(Color(0xFFC2EBD3), BrandColors.FarmerPrimary, Icons.Outlined.AttachMoney)
-    NotifKind.STOCK -> Triple(Color(0xFFF6D9D2), Color(0xFFB23A3A), Icons.Outlined.WarningAmber)
-    NotifKind.TIP -> Triple(Color(0xFFF6D9D2), Color(0xFF8C6E1F), Icons.Outlined.MenuBook)
-    NotifKind.MILESTONE -> Triple(Color(0xFFC2EBD3), BrandColors.FarmerPrimary, Icons.Outlined.Celebration)
-    NotifKind.DOCUMENT -> Triple(BrandColors.IndicatorInactive, BrandColors.TextPrimary, Icons.Outlined.Description)
+private fun formatRelativeDate(epochMillis: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - epochMillis
+    val oneDay = 24L * 60 * 60 * 1000
+    val timeFmt = SimpleDateFormat("HH:mm", Locale("es", "CO"))
+    val dateFmt = SimpleDateFormat("dd MMM", Locale("es", "CO"))
+    return when {
+        diff < oneDay -> "Hoy ${timeFmt.format(Date(epochMillis))}"
+        diff < 2 * oneDay -> "Ayer"
+        else -> dateFmt.format(Date(epochMillis))
+    }
 }

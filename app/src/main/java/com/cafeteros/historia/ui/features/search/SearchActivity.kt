@@ -1,146 +1,328 @@
 package com.cafeteros.historia.ui.features.search
 
+import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.cafeteros.historia.ui.features.caficultordetail.CaficultorDetailActivity
-import com.cafeteros.historia.ui.features.coffeemap.CoffeeMapActivity
-import com.cafeteros.historia.ui.features.searchresults.SearchResultsActivity
+import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cafeteros.historia.CafeterosApplication
+import com.cafeteros.historia.data.model.Product
+import com.cafeteros.historia.data.repository.ProductRepository
+import com.cafeteros.historia.ui.components.Base64Image
+import com.cafeteros.historia.ui.features.productdetail.ProductDetailActivity
+import com.cafeteros.historia.ui.theme.BrandColors
+import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 
 /**
- * Activity contenedora de la pantalla de búsqueda.
- *
- * Esta pantalla es **exclusiva del rol Comprador** ([ROLE_ID_COMPRADOR] = 1):
- * el caficultor no descubre café, así que no debería aterrizar aquí.
- *
- * Recibe por extras del Intent:
- *  - [EXTRA_ROLE_ID]: rol del usuario activo. SIEMPRE debe ser
- *    [ROLE_ID_COMPRADOR] (1) — si llega otro valor, esta activity lo
- *    fuerza a comprador y lo registra en logcat. El campo se guarda en
- *    [currentRoleId] para que, cuando la base de datos esté disponible,
- *    los casos de uso (`searchCoffee(query, roleId = ...)`,
- *    `loadRecentSearches(userId, roleId = ...)`, etc.) lo tomen de aquí
- *    sin tener que volver a inferirlo.
- *
- * Toda la UI vive en [SearchScreen]; aquí solo conectamos los callbacks
- * vía Toasts e Intents (mapa cafetero / detalle de caficultor) mientras
- * los demás flujos (búsqueda real, filtros) son las únicas pantallas
- * pendientes.
- *
- * Cuando se monten las llamadas a la BD/backend, el flujo esperado será:
- *  1. La sesión activa expone `roleId` desde una `UserSession` persistente.
- *  2. Esta activity deja de leer el rol del Intent y lo toma de la sesión.
- *  3. Las llamadas tipo `searchCoffee(query, roleId = roleId)` ya están
- *     listas para parametrizarse con [currentRoleId].
+ * ViewModel del buscador. Observa todos los productos activos y los
+ * filtra en cliente por una query escrita por el usuario. Para volúmenes
+ * típicos (decenas de productos) es más simple que orquestar consultas a
+ * Firestore con substring matching.
+ */
+class SearchViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val productRepository: ProductRepository =
+        (application as CafeterosApplication).productRepository
+
+    /** Lista base de productos activos, sin filtrar. */
+    val allProducts: StateFlow<List<Product>> = productRepository.observeActive()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+}
+
+/**
+ * Activity de búsqueda del comprador. Filtra productos por nombre,
+ * descripción, categoría o variedad — match case-insensitive en cliente.
  */
 class SearchActivity : ComponentActivity() {
 
-    /**
-     * Rol del usuario activo. Se inicializa desde el Intent extra y se
-     * fuerza a [ROLE_ID_COMPRADOR] cuando llega un valor inesperado, porque
-     * esta pantalla solo tiene sentido para compradores. Mientras no exista
-     * BD, se conserva en memoria por el ciclo de vida de la Activity.
-     */
-    private var currentRoleId: Int = ROLE_ID_COMPRADOR
+    private val viewModel: SearchViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        val incomingRoleId = intent.getIntExtra(EXTRA_ROLE_ID, ROLE_ID_COMPRADOR)
-        currentRoleId = if (incomingRoleId == ROLE_ID_COMPRADOR) {
-            incomingRoleId
-        } else {
-            Log.w(
-                TAG,
-                "Rol $incomingRoleId no soportado en SearchActivity; " +
-                        "se fuerza a ROLE_ID_COMPRADOR=$ROLE_ID_COMPRADOR."
-            )
-            ROLE_ID_COMPRADOR
-        }
-
-        Log.d(TAG, "SearchActivity iniciada con roleId=$currentRoleId")
-
         setContent {
             CafeterosTheme {
+                val products by viewModel.allProducts.collectAsStateWithLifecycle()
                 SearchScreen(
+                    products = products,
                     onBack = ::finish,
-                    onMicClick = { toast("Búsqueda por voz próximamente") },
-                    onSubmitQuery = ::openResults,
-                    onCategoryClick = ::handleCategoryClick,
-                    onCaficultorClick = { caficultor ->
-                        openCaficultorDetail(caficultor.displayName)
+                    onProductTap = { product ->
+                        ProductDetailActivity.start(this, product.id)
                     }
                 )
             }
         }
     }
 
-    private fun toast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    }
-
-    /**
-     * Cada categoría del grid "Explora por" tiene un destino diferente; hoy
-     * solo "ZONA" y "PERFIL_SABOR" tienen pantalla real (mapa cafetero), las
-     * demás se muestran como Toast hasta que sus pantallas existan.
-     */
-    private fun handleCategoryClick(
-        category: com.cafeteros.historia.ui.features.search.model.SearchCategory
-    ) {
-        when (category) {
-            com.cafeteros.historia.ui.features.search.model.SearchCategory.ZONA -> {
-                val intent = Intent(this, CoffeeMapActivity::class.java).apply {
-                    putExtra(CoffeeMapActivity.EXTRA_ROLE_ID, currentRoleId)
-                }
-                startActivity(intent)
-            }
-            else -> toast("${category.title} próximamente")
-        }
-    }
-
-    /**
-     * Abre la pantalla de resultados de búsqueda con la query como extra.
-     * Se invoca cuando el usuario toca un reciente, una tendencia o
-     * confirma con Enter en el input.
-     */
-    private fun openResults(query: String) {
-        val intent = Intent(this, SearchResultsActivity::class.java).apply {
-            putExtra(SearchResultsActivity.EXTRA_QUERY, query)
-            putExtra(SearchResultsActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
-    }
-
-    /**
-     * Abre el detalle del caficultor cuando el usuario pulsa un avatar de
-     * "Caficultores destacados". Reusa la activity ya existente.
-     */
-    private fun openCaficultorDetail(name: String) {
-        val intent = Intent(this, CaficultorDetailActivity::class.java).apply {
-            putExtra(CaficultorDetailActivity.EXTRA_CAFICULTOR_NAME, name)
-            putExtra(CaficultorDetailActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
-    }
-
     companion object {
-        private const val TAG: String = "SearchActivity"
-
-        /** Clave del extra que transporta el roleId del usuario activo. */
-        const val EXTRA_ROLE_ID: String = "extra_role_id"
-
-        /**
-         * Identificador del rol "Comprador" en la base de datos. Espejo de
-         * [com.cafeteros.historia.ui.features.auth.components.UserType.COMPRADOR.roleId].
-         * Se duplica como constante aquí para que esta pantalla pueda
-         * defaultearlo sin importar el módulo de auth.
-         */
-        const val ROLE_ID_COMPRADOR: Int = 1
+        fun start(context: Context) {
+            context.startActivity(Intent(context, SearchActivity::class.java))
+        }
     }
+}
+
+@Composable
+private fun SearchScreen(
+    products: List<Product>,
+    onBack: () -> Unit,
+    onProductTap: (Product) -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(products, query) {
+        if (query.isBlank()) products
+        else products.filter { it.matchesQuery(query) }
+    }
+
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .background(BrandColors.AuthBackground)
+        .systemBarsPadding()) {
+        // Barra superior con campo de búsqueda inline
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Volver",
+                    tint = BrandColors.TextPrimary
+                )
+            }
+            SearchField(
+                value = query,
+                onValueChange = { query = it },
+                onClear = { query = "" },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        if (filtered.isEmpty()) {
+            EmptyResults(modifier = Modifier.weight(1f), hasQuery = query.isNotBlank())
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = BrandSpacing.lg,
+                    vertical = BrandSpacing.sm
+                ),
+                verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
+            ) {
+                items(filtered) { product ->
+                    SearchResultRow(product = product, onTap = { onProductTap(product) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .background(BrandColors.InputBackground, RoundedCornerShape(50))
+            .padding(horizontal = BrandSpacing.md, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Search,
+            contentDescription = null,
+            tint = BrandColors.TextSecondary,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Box(modifier = Modifier.weight(1f)) {
+            if (value.isBlank()) {
+                Text(
+                    text = "Buscar café, variedad, región…",
+                    color = BrandColors.TextSecondary,
+                    fontSize = 13.sp,
+                    fontStyle = FontStyle.Italic
+                )
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = BrandColors.TextPrimary,
+                    fontSize = 13.sp
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (value.isNotBlank()) {
+            IconButton(onClick = onClear, modifier = Modifier.size(28.dp)) {
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = "Limpiar",
+                    tint = BrandColors.TextSecondary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyResults(modifier: Modifier = Modifier, hasQuery: Boolean) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(BrandSpacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .background(BrandColors.InputBackground, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Search,
+                contentDescription = null,
+                tint = BrandColors.TextSecondary,
+                modifier = Modifier.size(44.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(BrandSpacing.md))
+        Text(
+            text = if (hasQuery) "Sin resultados" else "Empieza a buscar",
+            color = BrandColors.TextPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = if (hasQuery) "Prueba con otro término."
+            else "Escribe el nombre del café, una variedad o una región.",
+            color = BrandColors.TextSecondary,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun SearchResultRow(product: Product, onTap: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
+            .clickable(onClick = onTap)
+            .padding(BrandSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Base64Image(
+            base64 = product.imageBase64,
+            contentDescription = product.name,
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
+        Column(modifier = Modifier
+            .weight(1f)
+            .padding(start = BrandSpacing.sm)) {
+            Text(
+                text = product.name,
+                color = BrandColors.TextPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Serif
+            )
+            Text(
+                text = "${product.weightGrams}g · ${product.category.label}",
+                color = BrandColors.TextSecondary,
+                fontSize = 11.sp
+            )
+            Text(
+                text = "$" + "%,d".format(product.priceCop).replace(',', '.'),
+                color = BrandColors.TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Text(text = "›", color = BrandColors.TextSecondary, fontSize = 22.sp)
+    }
+}
+
+/**
+ * Match case-insensitive contra los campos textuales del producto.
+ * Incluye nombre, descripciones, categoría, formato, variedad y notas de
+ * cata para que el buscador acepte queries diversas ("geisha", "miel",
+ * "honey", "lavado", "1kg" e incluso "huila" si está en el nombre).
+ */
+private fun Product.matchesQuery(query: String): Boolean {
+    val q = query.trim().lowercase()
+    val haystack = buildString {
+        append(name).append(' ')
+        append(shortDescription).append(' ')
+        append(fullDescription).append(' ')
+        append(category.label).append(' ')
+        append(format.label).append(' ')
+        append(varietyChips.joinToString(" ")).append(' ')
+        append(tastingNotes.joinToString(" "))
+    }.lowercase()
+    return q in haystack
 }

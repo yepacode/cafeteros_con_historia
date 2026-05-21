@@ -10,7 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.cafeteros.historia.ui.features.farmer_products.model.Product
 import com.cafeteros.historia.ui.features.farmer_products.model.ProductCreationStep
 import com.cafeteros.historia.ui.features.farmer_products.steps.ProductBasicsStep
 import com.cafeteros.historia.ui.features.farmer_products.steps.ProductPreviewStep
@@ -21,28 +20,46 @@ import com.cafeteros.historia.ui.features.farmer_products.steps.ProductPricingSt
  * con `AnimatedContent` y un `when` exhaustivo sobre [ProductCreationStep].
  *
  * @param editingProductId si es no-null, entra en modo edición y precarga
- *  el formulario con los datos del producto guardado en
- *  [com.cafeteros.historia.ui.features.farmer_products.model.ProductsStore].
+ *  el formulario con los datos del producto desde Firestore.
  * @param onClose callback para cerrar la activity (back en el primer paso).
- * @param onPublished callback al finalizar el wizard. Recibe el [Product]
- *  recién persistido para que la activity pueda navegar a la pantalla de
- *  confirmación con sus datos.
+ * @param onPublished callback al persistir con éxito. Recibe el id y el
+ *  nombre del producto para que la activity pueda navegar a la pantalla de
+ *  confirmación sin necesidad del modelo completo.
+ * @param onPublishError callback al fallar la persistencia. La activity
+ *  muestra un toast con el mensaje.
  */
 @Composable
 fun ProductCreateScreen(
     modifier: Modifier = Modifier,
     editingProductId: String?,
     onClose: () -> Unit,
-    onPublished: (Product) -> Unit
+    onPublished: (productId: String, productName: String) -> Unit,
+    onPublishError: (message: String) -> Unit
 ) {
     val viewModel: ProductCreateViewModel = viewModel()
     val formState by viewModel.formState.collectAsStateWithLifecycle()
     val currentStep by viewModel.currentStep.collectAsStateWithLifecycle()
+    val publishOutcome by viewModel.publishOutcome.collectAsStateWithLifecycle()
     val isEditing = editingProductId != null
 
     // Pre-cargar datos del producto al entrar en modo edición.
     LaunchedEffect(editingProductId) {
         if (editingProductId != null) viewModel.loadForEditing(editingProductId)
+    }
+
+    // Reaccionar al resultado de publish() emitido por el ViewModel.
+    LaunchedEffect(publishOutcome) {
+        when (val outcome = publishOutcome) {
+            is PublishOutcome.Success -> {
+                onPublished(outcome.productId, outcome.productName)
+                viewModel.consumePublishOutcome()
+            }
+            is PublishOutcome.Error -> {
+                onPublishError(outcome.message)
+                viewModel.consumePublishOutcome()
+            }
+            null -> Unit
+        }
     }
 
     val handleBack: () -> Unit = {
@@ -90,10 +107,7 @@ fun ProductCreateScreen(
                 state = formState,
                 isEditing = isEditing,
                 onBack = handleBack,
-                onPublish = {
-                    val saved = viewModel.publish()
-                    onPublished(saved)
-                }
+                onPublish = viewModel::publish
             )
         }
     }

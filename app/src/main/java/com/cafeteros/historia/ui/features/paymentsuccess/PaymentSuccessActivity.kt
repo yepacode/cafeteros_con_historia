@@ -1,120 +1,240 @@
 package com.cafeteros.historia.ui.features.paymentsuccess
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.cafeteros.historia.ui.features.paymentsuccess.model.PaymentSuccessSampleData
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.cafeteros.historia.ui.features.buyer_catalog.BuyerCatalogActivity
+import com.cafeteros.historia.ui.features.buyer_catalog.MyPurchasesActivity
+import com.cafeteros.historia.ui.theme.BrandColors
+import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
 
 /**
- * Activity contenedora del paso 4 del checkout en la rama de éxito.
+ * Activity de "pago exitoso" tras crear la(s) Order en Firestore.
  *
- * Esta pantalla es **exclusiva del rol Comprador** ([ROLE_ID_COMPRADOR] = 1):
- * solo el comprador completa el flujo de compra. Se llega a ella tras un
- * pago exitoso simulado desde [com.cafeteros.historia.ui.features
- * .checkoutpayment.MockPaymentGateway].
- *
- * Recibe por extras del Intent (todos opcionales — si faltan se usan los
- * datos sample para que la pantalla sea visible aún en deep-links):
- *  - [EXTRA_ROLE_ID]: rol del usuario activo. SIEMPRE debe ser
- *    [ROLE_ID_COMPRADOR] (1) — si llega otro valor, esta activity lo
- *    fuerza a comprador y lo registra en logcat.
- *  - [EXTRA_ORDER_NUMBER]: número del pedido recién creado ("#OR-34521").
- *  - [EXTRA_TOTAL_PAID]: total cobrado ya formateado.
- *  - [EXTRA_ESTIMATED_DELIVERY]: fecha estimada de entrega ya formateada.
- *  - [EXTRA_PAYMENT_LABEL]: etiqueta corta del método con el que se pagó.
- *
- * Cuando exista backend, la fuente de los datos cambia a un repositorio que
- * carga el pedido recién creado por id; el resto del cableado de UI se
- * mantiene.
+ * Recibe los datos básicos del pedido por intent extras (no necesita
+ * volver a leer Firestore — ya tenemos lo importante). Da dos vías:
+ * "Ver mis pedidos" o "Seguir comprando".
  */
 class PaymentSuccessActivity : ComponentActivity() {
-
-    private var currentRoleId: Int = ROLE_ID_COMPRADOR
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        val incomingRoleId = intent.getIntExtra(EXTRA_ROLE_ID, ROLE_ID_COMPRADOR)
-        currentRoleId = if (incomingRoleId == ROLE_ID_COMPRADOR) {
-            incomingRoleId
-        } else {
-            Log.w(
-                TAG,
-                "Rol $incomingRoleId no soportado en PaymentSuccessActivity; " +
-                        "se fuerza a ROLE_ID_COMPRADOR=$ROLE_ID_COMPRADOR."
-            )
-            ROLE_ID_COMPRADOR
-        }
-
-        val sampleOrder = PaymentSuccessSampleData.order
-        val order = sampleOrder.copy(
-            orderNumber = intent.getStringExtra(EXTRA_ORDER_NUMBER)
-                ?.takeIf { it.isNotBlank() }
-                ?: sampleOrder.orderNumber,
-            totalPaidFormatted = intent.getStringExtra(EXTRA_TOTAL_PAID)
-                ?.takeIf { it.isNotBlank() }
-                ?: sampleOrder.totalPaidFormatted,
-            estimatedDelivery = intent.getStringExtra(EXTRA_ESTIMATED_DELIVERY)
-                ?.takeIf { it.isNotBlank() }
-                ?: sampleOrder.estimatedDelivery,
-            paymentLabel = intent.getStringExtra(EXTRA_PAYMENT_LABEL)
-                ?.takeIf { it.isNotBlank() }
-                ?: sampleOrder.paymentLabel
-        )
-
-        Log.d(
-            TAG,
-            "PaymentSuccessActivity iniciada con roleId=$currentRoleId, " +
-                    "orderNumber=${order.orderNumber}, total=${order.totalPaidFormatted}"
-        )
+        val orderId = intent.getStringExtra(EXTRA_ORDER_ID).orEmpty()
+        val totalCop = intent.getLongExtra(EXTRA_TOTAL_COP, 0L)
+        val address = intent.getStringExtra(EXTRA_ADDRESS).orEmpty()
 
         setContent {
             CafeterosTheme {
                 PaymentSuccessScreen(
-                    order = order,
-                    onClose = ::finish,
-                    onTrackOrder = { toast("Mis pedidos próximamente") },
-                    onKeepExploring = { toast("Volver a explorar próximamente") },
-                    onRateExperience = { toast("Calificación próximamente") },
-                    onViewCaficultorProfile = { caficultor ->
-                        toast("Perfil de ${caficultor.fincaName} próximamente")
-                    }
+                    orderId = orderId,
+                    totalCop = totalCop,
+                    address = address,
+                    onSeeOrders = {
+                        MyPurchasesActivity.start(this)
+                        backToCatalog()
+                    },
+                    onKeepShopping = ::backToCatalog
                 )
             }
         }
     }
 
-    private fun toast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    /**
+     * Cierra esta activity y vuelve al catálogo en lugar de quedarse en
+     * la pila. Usa CLEAR_TASK para que el back del comprador no caiga en
+     * el checkout ya consumido.
+     */
+    private fun backToCatalog() {
+        val intent = Intent(this, BuyerCatalogActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+        finish()
     }
 
     companion object {
-        private const val TAG: String = "PaymentSuccessActivity"
+        private const val EXTRA_ORDER_ID = "extra_order_id"
+        private const val EXTRA_TOTAL_COP = "extra_total_cop"
+        private const val EXTRA_ADDRESS = "extra_address"
 
-        /** Clave del extra que transporta el roleId del usuario activo. */
-        const val EXTRA_ROLE_ID: String = "extra_role_id"
+        fun start(context: Context, orderId: String, totalCop: Long, address: String) {
+            val intent = Intent(context, PaymentSuccessActivity::class.java).apply {
+                putExtra(EXTRA_ORDER_ID, orderId)
+                putExtra(EXTRA_TOTAL_COP, totalCop)
+                putExtra(EXTRA_ADDRESS, address)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            context.startActivity(intent)
+        }
+    }
+}
 
-        /** Clave del extra con el número del pedido recién creado. */
-        const val EXTRA_ORDER_NUMBER: String = "extra_order_number"
+@Composable
+private fun PaymentSuccessScreen(
+    orderId: String,
+    totalCop: Long,
+    address: String,
+    onSeeOrders: () -> Unit,
+    onKeepShopping: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BrandColors.AuthBackground)
+            .systemBarsPadding()
+            .padding(BrandSpacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // Anillo + check
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .background(BrandColors.CardBackground, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(88.dp)
+                    .background(Color(0xFFC9A227), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(56.dp)
+                )
+            }
+        }
 
-        /** Clave del extra con el total ya formateado. */
-        const val EXTRA_TOTAL_PAID: String = "extra_total_paid"
+        Spacer(modifier = Modifier.height(BrandSpacing.lg))
 
-        /** Clave del extra con la fecha de entrega ya formateada. */
-        const val EXTRA_ESTIMATED_DELIVERY: String = "extra_estimated_delivery"
+        Text(
+            text = "¡Pago confirmado!",
+            style = TextStyle(
+                fontFamily = FontFamily.Serif,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = BrandColors.TextPrimary
+            ),
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Tu pedido fue creado y el caficultor ya lo recibió.",
+            color = BrandColors.TextSecondary,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            lineHeight = 19.sp
+        )
 
-        /** Clave del extra con la etiqueta del método de pago usado. */
-        const val EXTRA_PAYMENT_LABEL: String = "extra_payment_label"
+        Spacer(modifier = Modifier.height(BrandSpacing.lg))
 
-        /**
-         * Identificador del rol "Comprador" en la base de datos. Espejo de
-         * [com.cafeteros.historia.ui.features.auth.components.UserType.COMPRADOR.roleId].
-         */
-        const val ROLE_ID_COMPRADOR: Int = 1
+        // Card resumen
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
+                .padding(BrandSpacing.md),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ReceiptRow(label = "Pedido", value = "#${orderId.take(8).uppercase()}")
+            ReceiptRow(
+                label = "Total pagado",
+                value = "$" + "%,d".format(totalCop).replace(',', '.'),
+                emphasize = true
+            )
+            if (address.isNotBlank()) {
+                ReceiptRow(label = "Enviar a", value = address)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(BrandSpacing.lg))
+
+        Button(
+            onClick = onSeeOrders,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = BrandColors.CoffeeBrown,
+                contentColor = Color.White
+            )
+        ) {
+            Text(text = "Ver mis pedidos", fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(modifier = Modifier.height(BrandSpacing.sm))
+        OutlinedButton(
+            onClick = onKeepShopping,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+        ) {
+            Text(
+                text = "Seguir comprando",
+                color = BrandColors.FarmerPrimary,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReceiptRow(label: String, value: String, emphasize: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = BrandColors.TextSecondary,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            color = BrandColors.TextPrimary,
+            fontSize = if (emphasize) 16.sp else 13.sp,
+            fontWeight = if (emphasize) FontWeight.Bold else FontWeight.SemiBold,
+            fontFamily = if (emphasize) FontFamily.Serif else FontFamily.SansSerif
+        )
     }
 }

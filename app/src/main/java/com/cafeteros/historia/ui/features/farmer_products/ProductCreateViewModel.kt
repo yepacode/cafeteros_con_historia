@@ -1,31 +1,51 @@
 package com.cafeteros.historia.ui.features.farmer_products
 
+import android.app.Application
 import android.net.Uri
-import androidx.lifecycle.ViewModel
-import com.cafeteros.historia.ui.features.farmer_products.model.CoffeeFormat
-import com.cafeteros.historia.ui.features.farmer_products.model.Product
-import com.cafeteros.historia.ui.features.farmer_products.model.ProductCategory
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.cafeteros.historia.CafeterosApplication
+import com.cafeteros.historia.data.model.CoffeeFormat
+import com.cafeteros.historia.data.model.ProductCategory
+import com.cafeteros.historia.data.repository.ProductOperationResult
+import com.cafeteros.historia.data.repository.ProductRepository
+import com.cafeteros.historia.data.repository.UserRepository
 import com.cafeteros.historia.ui.features.farmer_products.model.ProductCreationStep
 import com.cafeteros.historia.ui.features.farmer_products.model.ProductFormState
-import com.cafeteros.historia.ui.features.farmer_products.model.ProductsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/**
+ * Resultado de una operación de publicación expuesto a la Activity.
+ *
+ * La Activity lo consume para decidir si navegar a [ProductPublishedActivity]
+ * o mostrar un toast de error.
+ */
+sealed class PublishOutcome {
+    data class Success(val productId: String, val productName: String) : PublishOutcome()
+    data class Error(val message: String) : PublishOutcome()
+}
 
 /**
  * ViewModel del wizard de creación/edición de producto.
  *
- * Centraliza:
- *  - El [ProductFormState] del producto en construcción.
- *  - El [ProductCreationStep] activo (3 pasos).
- *  - La persistencia final en [ProductsStore] al pulsar "Publicar".
+ * Conecta el [ProductFormState] (estado de UI) con el [ProductRepository]
+ * (persistencia en Firestore + compresión de imagen). El uid del caficultor
+ * se obtiene del [UserRepository] al momento de publicar.
  *
- * No es AndroidViewModel porque por ahora no necesita Application/Context —
- * la store es singleton in-memory. Cuando se conecte Room habrá que pasar
- * [com.cafeteros.historia.CafeterosApplication] como en
- * [com.cafeteros.historia.ui.features.farmer_registration.FarmerRegistrationViewModel].
+ * **Modo edición:** se activa pasando `editingProductId` no-null a
+ * [loadForEditing]. El repo lee el producto, llenamos el formulario y
+ * marcamos `editingProductId` para que `publish()` haga `update` en lugar
+ * de `create`. La foto previa se guarda como `existingImageBase64` para
+ * conservarla si el usuario no sube una nueva.
  */
-class ProductCreateViewModel : ViewModel() {
+class ProductCreateViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val app = application as CafeterosApplication
+    private val productRepository: ProductRepository = app.productRepository
+    private val userRepository: UserRepository = app.userRepository
 
     private val _formState = MutableStateFlow(ProductFormState())
     val formState: StateFlow<ProductFormState> = _formState.asStateFlow()
@@ -33,36 +53,45 @@ class ProductCreateViewModel : ViewModel() {
     private val _currentStep = MutableStateFlow(ProductCreationStep.Basics)
     val currentStep: StateFlow<ProductCreationStep> = _currentStep.asStateFlow()
 
+    private val _isPublishing = MutableStateFlow(false)
+    val isPublishing: StateFlow<Boolean> = _isPublishing.asStateFlow()
+
+    private val _publishOutcome = MutableStateFlow<PublishOutcome?>(null)
+    val publishOutcome: StateFlow<PublishOutcome?> = _publishOutcome.asStateFlow()
+
     /**
      * Pre-carga el formulario con los datos de un producto existente para
-     * entrar en modo edición. Idempotente: si se vuelve a llamar con el
-     * mismo id, simplemente reemplaza el state.
+     * entrar en modo edición. Lee desde Firestore vía repositorio.
      */
     fun loadForEditing(productId: String) {
-        val existing = ProductsStore.findById(productId) ?: return
-        _formState.value = ProductFormState(
-            editingProductId = existing.id,
-            name = existing.name,
-            category = existing.category,
-            shortDescription = existing.shortDescription,
-            fullDescription = existing.fullDescription,
-            tagsInput = "",
-            tags = existing.tags,
-            varietyChips = existing.varietyChips,
-            tastingNotes = existing.tastingNotes,
-            format = existing.format,
-            weightGrams = existing.weightGrams,
-            priceCopInput = existing.priceCop.toString(),
-            stockUnitsInput = existing.stockUnits.toString(),
-            isOrganic = existing.isOrganic,
-            photoUri = existing.photoUri
-        )
-        _currentStep.value = ProductCreationStep.Basics
+        viewModelScope.launch {
+            val existing = productRepository.findById(productId) ?: return@launch
+            _formState.value = ProductFormState(
+                editingProductId = existing.id,
+                name = existing.name,
+                category = existing.category,
+                shortDescription = existing.shortDescription,
+                fullDescription = existing.fullDescription,
+                tagsInput = "",
+                tags = existing.tags,
+                varietyChips = existing.varietyChips,
+                tastingNotes = existing.tastingNotes,
+                format = existing.format,
+                weightGrams = existing.weightGrams,
+                priceCopInput = existing.priceCop.toString(),
+                stockUnitsInput = existing.stockUnits.toString(),
+                isOrganic = existing.isOrganic,
+                photoUri = null,
+                existingImageBase64 = existing.imageBase64
+            )
+            _currentStep.value = ProductCreationStep.Basics
+        }
     }
 
     // ── Setters del paso 1 (Detalles del producto) ──────────────────────────
 
     fun setPhotoUri(uri: Uri?) {
+        android.util.Log.d("ProductCreateVM", "setPhotoUri called with: $uri")
         _formState.value = _formState.value.copy(photoUri = uri)
     }
 
@@ -160,20 +189,58 @@ class ProductCreateViewModel : ViewModel() {
     }
 
     /**
-     * Persiste el producto en [ProductsStore]. Si el formulario es de
-     * edición ([ProductFormState.editingProductId] no-null), reemplaza el
-     * producto existente; si es creación, lo agrega.
+     * Persiste el producto en Firestore vía [ProductRepository]. Si está en
+     * modo edición hace `update`; si no, `create`. Comprime la foto si el
+     * usuario subió una nueva.
      *
-     * @return el [Product] persistido (útil para mostrarlo en
-     *  [com.cafeteros.historia.ui.features.farmer_products.ProductPublishedActivity]).
+     * El resultado se emite en [publishOutcome]; la Activity observa ese
+     * flujo y reacciona (navegar o mostrar error).
      */
-    fun publish(): Product {
-        val product = _formState.value.toProduct()
-        if (_formState.value.editingProductId != null) {
-            ProductsStore.update(product)
-        } else {
-            ProductsStore.add(product)
+    fun publish() {
+        if (_isPublishing.value) return
+        _isPublishing.value = true
+
+        viewModelScope.launch {
+            val uid = userRepository.currentUid()
+            if (uid == null) {
+                _isPublishing.value = false
+                _publishOutcome.value = PublishOutcome.Error(
+                    "Tu sesión expiró. Inicia sesión otra vez para publicar."
+                )
+                return@launch
+            }
+
+            val state = _formState.value
+            android.util.Log.d(
+                "ProductCreateVM",
+                "publish: photoUri=${state.photoUri}, name='${state.name}', editing=${state.editingProductId}"
+            )
+            val product = state.toProduct(caficultorUid = uid)
+            val result = if (state.editingProductId != null) {
+                productRepository.updateProduct(
+                    productId = state.editingProductId,
+                    product = product,
+                    photoUri = state.photoUri
+                )
+            } else {
+                productRepository.createProduct(
+                    product = product,
+                    photoUri = state.photoUri
+                )
+            }
+
+            _isPublishing.value = false
+            _publishOutcome.value = when (result) {
+                is ProductOperationResult.Success ->
+                    PublishOutcome.Success(productId = result.productId, productName = product.name)
+                is ProductOperationResult.Error ->
+                    PublishOutcome.Error(result.message)
+            }
         }
-        return product
+    }
+
+    /** Resetea el resultado tras consumirlo (evita re-disparar la navegación). */
+    fun consumePublishOutcome() {
+        _publishOutcome.value = null
     }
 }

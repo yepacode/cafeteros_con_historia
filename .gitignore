@@ -39,6 +39,14 @@ logcat.txt
 *.keystore
 keystore.properties
 
+# Firebase: el archivo real contiene IDs del proyecto y NO debe subirse.
+# Subimos google-services.example.json como plantilla.
+app/google-services.json
+
+# Screenshots tomadas para debugging (no son arte oficial del proyecto)
+login_state.png
+login*.png
+
 # Archivos OS
 Thumbs.db
 ehthumbs.db

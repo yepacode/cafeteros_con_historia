@@ -16,33 +16,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.cafeteros.historia.ui.features.password_recovery.model.PasswordRecoveryStep
-import com.cafeteros.historia.ui.features.password_recovery.screens.CodeVerificationScreen
 import com.cafeteros.historia.ui.features.password_recovery.screens.EmailEntryScreen
-import com.cafeteros.historia.ui.features.password_recovery.screens.NewPasswordScreen
 import com.cafeteros.historia.ui.features.password_recovery.screens.PasswordUpdatedScreen
 import com.cafeteros.historia.ui.theme.CafeterosTheme
 
 /**
- * Código OTP "mock" que la app acepta como válido mientras no exista backend.
+ * Composable raíz del flujo de recuperación de contraseña.
  *
- * En la integración real, esta constante desaparece: el código se genera en
- * el servidor, se envía por email/SMS y se verifica vía endpoint REST.
- */
-private const val MOCK_VALID_OTP_CODE: String = "1234"
-
-/**
- * Composable raíz del flujo completo de recuperación de contraseña.
+ * Con Firebase Auth el flujo se reduce a 2 pantallas: el usuario escribe su
+ * correo, Firebase le envía un link de restablecimiento, y mostramos una
+ * pantalla de confirmación. El reseteo en sí lo realiza el usuario en la
+ * página de Firebase a la que llega el link.
  *
- * Mantiene una pequeña máquina de estados sobre [PasswordRecoveryStep] y
- * delega la persistencia (verificar email, actualizar contraseña) a
- * [PasswordRecoveryViewModel].
- *
- * Se mantienen los `// TODO backend:` para los puntos donde, cuando exista
- * un servidor real, hay que reemplazar la lógica local (envío de OTP,
- * verificación de código).
- *
- * @param modifier modifier opcional aplicado a la pantalla activa.
  * @param onClose callback que la Activity debe usar para cerrarse.
  * @param onContactSupport callback del enlace "Contactar a soporte técnico".
  */
@@ -56,102 +41,43 @@ fun PasswordRecoveryFlow(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    var currentStep: PasswordRecoveryStep by rememberSaveable(
-        stateSaver = PasswordRecoveryStepSaver
-    ) { mutableStateOf(PasswordRecoveryStep.EmailEntry) }
+    var showSuccess by rememberSaveable { mutableStateOf(false) }
 
-    var email by rememberSaveable { mutableStateOf("") }
-
-    LaunchedEffect(uiState.emailErrorMessage) {
-        uiState.emailErrorMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            viewModel.consumeEmailError()
-        }
+    // Cuando el correo se envía correctamente, avanzamos a la pantalla final.
+    LaunchedEffect(uiState.wasSent) {
+        if (uiState.wasSent) showSuccess = true
     }
 
-    LaunchedEffect(uiState.passwordErrorMessage) {
-        uiState.passwordErrorMessage?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
-            viewModel.consumePasswordError()
+    LaunchedEffect(uiState.errorMessage) {
+        uiState.errorMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            viewModel.consumeError()
         }
     }
 
     AnimatedContent(
-        targetState = currentStep,
+        targetState = showSuccess,
         transitionSpec = { fadeIn() togetherWith fadeOut() },
         label = "passwordRecoveryStep"
-    ) { step ->
-        when (step) {
-            PasswordRecoveryStep.EmailEntry -> EmailEntryScreen(
-                modifier = modifier,
-                onBack = onClose,
-                onSendCode = { enteredEmail ->
-                    email = enteredEmail
-                    // TODO backend: solicitar al servidor el envío del código a `enteredEmail`.
-                    viewModel.checkEmailAndAdvance(enteredEmail) {
-                        currentStep = PasswordRecoveryStep.CodeVerification
-                    }
-                },
-                onAlreadyRemember = onClose
-            )
-
-            PasswordRecoveryStep.CodeVerification -> CodeVerificationScreen(
-                modifier = modifier,
-                email = email,
-                onBack = { currentStep = PasswordRecoveryStep.EmailEntry },
-                onVerifyCode = { code ->
-                    // TODO backend: validar el código con el servidor en vez de comparar local.
-                    if (code == MOCK_VALID_OTP_CODE) {
-                        currentStep = PasswordRecoveryStep.NewPassword
-                    } else {
-                        Toast.makeText(
-                            context,
-                            "Código incorrecto. Pista temporal: $MOCK_VALID_OTP_CODE",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                },
-                onResendCode = {
-                    // TODO backend: pedir al servidor reenviar el código a `email`.
-                }
-            )
-
-            PasswordRecoveryStep.NewPassword -> NewPasswordScreen(
-                modifier = modifier,
-                onBack = { currentStep = PasswordRecoveryStep.CodeVerification },
-                onSavePassword = { newPassword ->
-                    viewModel.savePassword(email = email, newPassword = newPassword) {
-                        currentStep = PasswordRecoveryStep.Success
-                    }
-                }
-            )
-
-            PasswordRecoveryStep.Success -> PasswordUpdatedScreen(
+    ) { success ->
+        if (success) {
+            PasswordUpdatedScreen(
                 modifier = modifier,
                 onLogin = onClose,
                 onContactSupport = onContactSupport
             )
+        } else {
+            EmailEntryScreen(
+                modifier = modifier,
+                onBack = onClose,
+                onSendCode = { enteredEmail ->
+                    viewModel.sendRecoveryEmail(enteredEmail)
+                },
+                onAlreadyRemember = onClose
+            )
         }
     }
 }
-
-/**
- * Saver para que [PasswordRecoveryStep] sobreviva a recreaciones de la
- * Activity (ej. rotación de pantalla) usando [rememberSaveable].
- */
-private val PasswordRecoveryStepSaver: androidx.compose.runtime.saveable.Saver<PasswordRecoveryStep, String> =
-    androidx.compose.runtime.saveable.Saver(
-        save = { step -> step::class.simpleName ?: "EmailEntry" },
-        restore = { name ->
-            when (name) {
-                "EmailEntry" -> PasswordRecoveryStep.EmailEntry
-                "CodeVerification" -> PasswordRecoveryStep.CodeVerification
-                "NewPassword" -> PasswordRecoveryStep.NewPassword
-                "Success" -> PasswordRecoveryStep.Success
-                else -> PasswordRecoveryStep.EmailEntry
-            }
-        }
-    )
 
 @Preview(name = "PasswordRecoveryFlow", widthDp = 360, heightDp = 800)
 @Composable

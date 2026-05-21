@@ -24,8 +24,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cafeteros.historia.ui.features.farmer_products.components.WizardHeader
-import com.cafeteros.historia.ui.features.farmer_products.model.CoffeeFormat
-import com.cafeteros.historia.ui.features.farmer_products.model.DEFAULT_WEIGHT_OPTIONS_GRAMS
+import com.cafeteros.historia.data.model.CoffeeFormat
+import com.cafeteros.historia.data.model.DEFAULT_WEIGHT_OPTIONS_GRAMS
 import com.cafeteros.historia.ui.features.farmer_products.model.ProductCreationStep
 import com.cafeteros.historia.ui.features.farmer_products.model.ProductFormState
 import com.cafeteros.historia.ui.features.farmer_registration.components.LabeledTextField

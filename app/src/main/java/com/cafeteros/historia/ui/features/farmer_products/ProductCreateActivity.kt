@@ -3,6 +3,7 @@ package com.cafeteros.historia.ui.features.farmer_products
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -12,14 +13,13 @@ import com.cafeteros.historia.ui.theme.CafeterosTheme
  * Activity contenedora del wizard de creación/edición de producto.
  *
  * Soporta dos modos:
- *  - **Crear**: se abre con [start] (sin id) y entra al wizard en blanco.
- *  - **Editar**: se abre con [start] pasando un `productId` existente; el
- *    [ProductCreateViewModel] precarga el formulario con sus datos.
+ *  - **Crear**: se abre con [startNew] y entra al wizard en blanco.
+ *  - **Editar**: se abre con [startEdit] pasando un `productId` existente;
+ *    el [ProductCreateViewModel] precarga el formulario desde Firestore.
  *
- * Al pulsar "Publicar" / "Guardar cambios", se persiste en
- * [com.cafeteros.historia.ui.features.farmer_products.model.ProductsStore]
- * y se navega a [ProductPublishedActivity] (solo en modo crear) o se cierra
- * y vuelve a la pantalla anterior (en modo editar).
+ * Al publicar con éxito navega a [ProductPublishedActivity] (modo crear) o
+ * cierra la activity (modo editar). En caso de error muestra un Toast con
+ * el mensaje devuelto por el repositorio.
  */
 class ProductCreateActivity : ComponentActivity() {
 
@@ -35,13 +35,21 @@ class ProductCreateActivity : ComponentActivity() {
                 ProductCreateScreen(
                     editingProductId = editingProductId,
                     onClose = ::finish,
-                    onPublished = { product ->
+                    onPublished = { productId, productName ->
                         if (isEditing) {
+                            Toast.makeText(
+                                this,
+                                "Cambios guardados",
+                                Toast.LENGTH_SHORT
+                            ).show()
                             finish()
                         } else {
-                            ProductPublishedActivity.start(this, product.id, product.name)
+                            ProductPublishedActivity.start(this, productId, productName)
                             finish()
                         }
+                    },
+                    onPublishError = { message ->
+                        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                     }
                 )
             }

@@ -1,92 +1,288 @@
 package com.cafeteros.historia.ui.features.coffeemap
 
+import android.app.Application
+import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.cafeteros.historia.ui.features.coffeemap.model.CoffeeZone
-import com.cafeteros.historia.ui.features.zonedetail.ZoneDetailActivity
+import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.cafeteros.historia.CafeterosApplication
+import com.cafeteros.historia.data.model.FarmProfile
+import com.cafeteros.historia.data.repository.FarmRepository
+import com.cafeteros.historia.ui.features.caficultordetail.CaficultorDetailActivity
+import com.cafeteros.historia.ui.theme.BrandColors
+import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
 
 /**
- * Activity contenedora del Mapa Cafetero.
- *
- * Toda la UI vive en [CoffeeMapScreen]; aquí solo se conecta la navegación.
- *
- * Recibe por extras del Intent:
- *  - [EXTRA_ROLE_ID]: identificador numérico del rol del usuario que abrió
- *    el mapa. En esta app el mapa está asociado al rol Comprador
- *    ([ROLE_ID_COMPRADOR] = 1); el caficultor tiene su propia experiencia.
- *    El campo se guarda en [currentRoleId] para que, cuando la base de datos
- *    esté disponible, los casos de uso (filtrar zonas según rol, registrar
- *    interés en una zona, etc.) lo tomen de aquí sin tener que volver a
- *    inferirlo.
- *
- * Cuando se monten las llamadas a la BD/backend, el flujo esperado será:
- *  1. La sesión activa expone `roleId` desde una `UserSession` persistente.
- *  2. Esta activity deja de leer el rol del Intent y lo toma de la sesión.
- *  3. Las llamadas tipo `loadZones(roleId = roleId)` ya están listas para
- *     parametrizarse con [currentRoleId].
+ * ViewModel del mapa cafetero. Observa todas las fincas y deja solo las
+ * que tienen coordenadas (lat/lng) — son las que se pueden marcar.
+ */
+class CoffeeMapViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val farmRepository: FarmRepository =
+        (application as CafeterosApplication).farmRepository
+
+    val farmsWithLocation: StateFlow<List<FarmProfile>> = farmRepository.observeAllFarms()
+        .map { farms -> farms.filter { it.latitude != null && it.longitude != null } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+}
+
+/**
+ * Activity del mapa cafetero. Reemplaza la ilustración estática anterior
+ * por un MapView real de OpenStreetMap con marcadores en las
+ * coordenadas reales de cada caficultor. Tap en marcador → perfil
+ * público del caficultor.
  */
 class CoffeeMapActivity : ComponentActivity() {
 
-    /**
-     * Rol del usuario activo. Se inicializa desde el Intent extra y, mientras
-     * no exista BD, se conserva en memoria por el ciclo de vida de la
-     * Activity. Pensado para ser leído por futuros casos de uso.
-     */
-    private var currentRoleId: Int = ROLE_ID_COMPRADOR
+    private val viewModel: CoffeeMapViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        currentRoleId = intent.getIntExtra(EXTRA_ROLE_ID, ROLE_ID_COMPRADOR)
-        Log.d(TAG, "CoffeeMapActivity iniciada con roleId=$currentRoleId")
-
         setContent {
             CafeterosTheme {
+                val farms by viewModel.farmsWithLocation.collectAsStateWithLifecycle()
                 CoffeeMapScreen(
+                    farms = farms,
                     onBack = ::finish,
-                    onFilter = { toast("Filtros del mapa próximamente") },
-                    onZoneClick = ::openZoneDetail
+                    onFarmTap = { farm ->
+                        CaficultorDetailActivity.start(this, farm.caficultorUid)
+                    }
                 )
             }
         }
     }
 
-    private fun toast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-    }
-
-    /**
-     * Abre el detalle de una zona al pulsar su marcador en el mapa.
-     * Propaga el [currentRoleId] como extra para que la cadena del rol del
-     * usuario activo se mantenga hasta la nueva activity.
-     */
-    private fun openZoneDetail(zone: CoffeeZone) {
-        val intent = Intent(this, ZoneDetailActivity::class.java).apply {
-            putExtra(ZoneDetailActivity.EXTRA_ZONE_NAME, zone.name)
-            putExtra(ZoneDetailActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
-    }
-
     companion object {
-        private const val TAG: String = "CoffeeMapActivity"
-
-        /** Clave del extra que transporta el roleId del usuario activo. */
-        const val EXTRA_ROLE_ID: String = "extra_role_id"
-
-        /**
-         * Identificador del rol "Comprador" en la base de datos. Espejo de
-         * [com.cafeteros.historia.ui.features.auth.components.UserType.COMPRADOR.roleId].
-         * Se duplica como constante aquí para que esta pantalla pueda
-         * defaultearlo sin importar el módulo de auth.
-         */
-        const val ROLE_ID_COMPRADOR: Int = 1
+        fun start(context: Context) {
+            context.startActivity(Intent(context, CoffeeMapActivity::class.java))
+        }
     }
+}
+
+@Composable
+private fun CoffeeMapScreen(
+    farms: List<FarmProfile>,
+    onBack: () -> Unit,
+    onFarmTap: (FarmProfile) -> Unit
+) {
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .background(BrandColors.AuthBackground)
+        .systemBarsPadding()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = BrandSpacing.sm, vertical = BrandSpacing.xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                    contentDescription = "Volver",
+                    tint = BrandColors.TextPrimary
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Mapa Cafetero",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandColors.TextPrimary
+                    )
+                )
+                Text(
+                    text = "${farms.size} caficultor${if (farms.size == 1) "" else "es"} en el mapa",
+                    color = BrandColors.TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+        }
+
+        if (farms.isEmpty()) {
+            Column(
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(BrandSpacing.lg),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .background(BrandColors.InputBackground, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.LocationOn,
+                        contentDescription = null,
+                        tint = BrandColors.CoffeeBrown,
+                        modifier = Modifier.size(56.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(BrandSpacing.md))
+                Text(
+                    text = "Ningún caficultor ha marcado su ubicación",
+                    color = BrandColors.TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Cuando un caficultor marque dónde está su finca, aparecerá aquí.",
+                    color = BrandColors.TextSecondary,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else {
+            FarmsMapView(
+                farms = farms,
+                onFarmTap = onFarmTap,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
+        }
+    }
+}
+
+/**
+ * Composable que aloja un osmdroid `MapView` con marcadores para cada
+ * finca. Reutiliza el patrón ya probado en [com.cafeteros.historia.ui
+ * .components.MapLocationPicker].
+ */
+@Composable
+private fun FarmsMapView(
+    farms: List<FarmProfile>,
+    onFarmTap: (FarmProfile) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(Unit) {
+        Configuration.getInstance().load(
+            context,
+            context.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE)
+        )
+        Configuration.getInstance().userAgentValue = context.packageName
+    }
+
+    val mapView = remember {
+        MapView(context).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            isHorizontalMapRepetitionEnabled = false
+            isVerticalMapRepetitionEnabled = false
+            background = ColorDrawable(BrandColors.MapCanvasBackground.toArgb())
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) { mapView.onResume() }
+            override fun onPause(owner: LifecycleOwner) { mapView.onPause() }
+            override fun onDestroy(owner: LifecycleOwner) { mapView.onDetach() }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { mapView },
+        update = { view ->
+            view.overlays.clear()
+
+            // Centro del mapa: en la finca promedio, o en Pereira si no hay.
+            val centerPoint = if (farms.isNotEmpty()) {
+                val avgLat = farms.mapNotNull { it.latitude }.average()
+                val avgLng = farms.mapNotNull { it.longitude }.average()
+                GeoPoint(avgLat, avgLng)
+            } else {
+                GeoPoint(4.8133, -75.6961) // Pereira, Eje Cafetero
+            }
+            view.controller.setCenter(centerPoint)
+            view.controller.setZoom(if (farms.size <= 1) 12.0 else 7.0)
+
+            // Marcadores por finca.
+            farms.forEach { farm ->
+                val lat = farm.latitude ?: return@forEach
+                val lng = farm.longitude ?: return@forEach
+                val marker = Marker(view).apply {
+                    position = GeoPoint(lat, lng)
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    title = farm.name.ifBlank { "Finca" }
+                    snippet = farm.region.ifBlank { "Sin región" }
+                    setOnMarkerClickListener { _, _ ->
+                        onFarmTap(farm)
+                        true
+                    }
+                }
+                view.overlays.add(marker)
+            }
+            view.invalidate()
+        }
+    )
 }

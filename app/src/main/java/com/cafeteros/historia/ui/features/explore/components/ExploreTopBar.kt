@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -31,6 +32,8 @@ import com.cafeteros.historia.ui.theme.CafeterosTheme
  * Muestra:
  *  - Botón hamburguesa (acceso a menú lateral / drawer).
  *  - Wordmark "Origen" en serif itálico (identidad de marca compacta).
+ *  - Botón de configuración (acceso a la pantalla de ajustes, incluido el
+ *    toggle de huella).
  *  - Botón de notificaciones con punto rojo cuando [hasUnreadNotifications].
  *
  * Es stateless: el padre maneja la navegación vía callbacks.
@@ -38,6 +41,7 @@ import com.cafeteros.historia.ui.theme.CafeterosTheme
  * @param modifier modifier opcional aplicado al [Row] contenedor.
  * @param hasUnreadNotifications dibuja el punto rojo sobre la campana.
  * @param onMenuClick callback del botón hamburguesa.
+ * @param onSettingsClick callback del botón de configuración.
  * @param onNotificationsClick callback de la campana de notificaciones.
  */
 @Composable
@@ -45,6 +49,7 @@ fun ExploreTopBar(
     modifier: Modifier = Modifier,
     hasUnreadNotifications: Boolean = true,
     onMenuClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {}
 ) {
     Row(
@@ -68,22 +73,31 @@ fun ExploreTopBar(
             )
         }
 
-        Box(contentAlignment = Alignment.TopEnd) {
-            IconButton(onClick = onNotificationsClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onSettingsClick) {
                 Icon(
-                    imageVector = Icons.Outlined.Notifications,
-                    contentDescription = "Notificaciones",
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = "Configuración",
                     tint = BrandColors.TextPrimary
                 )
             }
-            if (hasUnreadNotifications) {
-                Box(
-                    modifier = Modifier
-                        .padding(top = 12.dp, end = 12.dp)
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(BrandColors.NotificationDot)
-                )
+            Box(contentAlignment = Alignment.TopEnd) {
+                IconButton(onClick = onNotificationsClick) {
+                    Icon(
+                        imageVector = Icons.Outlined.Notifications,
+                        contentDescription = "Notificaciones",
+                        tint = BrandColors.TextPrimary
+                    )
+                }
+                if (hasUnreadNotifications) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 12.dp, end = 12.dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(BrandColors.NotificationDot)
+                    )
+                }
             }
         }
     }

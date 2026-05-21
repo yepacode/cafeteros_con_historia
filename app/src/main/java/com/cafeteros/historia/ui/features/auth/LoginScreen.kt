@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +52,8 @@ import com.cafeteros.historia.ui.theme.CafeterosTheme
 @Composable
 fun LoginScreen(
     modifier: Modifier = Modifier,
+    initialEmail: String = "",
+    showFingerprint: Boolean = false,
     onBack: () -> Unit = {},
     onLogin: (email: String, password: String) -> Unit = { _, _ -> },
     onForgotPassword: () -> Unit = {},
@@ -58,7 +61,16 @@ fun LoginScreen(
     onFingerprintLogin: () -> Unit = {},
     onRegister: () -> Unit = {}
 ) {
+    // Email pre-llenado: el StateFlow del ViewModel emite asíncronamente, por
+    // lo que `initialEmail` llega null al primer render y con valor real
+    // después. Un LaunchedEffect copia el valor en cuanto está disponible,
+    // sin sobreescribir lo que el usuario escribió manualmente.
     var email by remember { mutableStateOf("") }
+    LaunchedEffect(initialEmail) {
+        if (initialEmail.isNotBlank() && email.isBlank()) {
+            email = initialEmail
+        }
+    }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
@@ -109,7 +121,8 @@ fun LoginScreen(
 
             SocialAuthButtonsRow(
                 onGoogleClick = onGoogleLogin,
-                onFingerprintClick = onFingerprintLogin
+                onFingerprintClick = onFingerprintLogin,
+                showFingerprint = showFingerprint
             )
 
             Spacer(modifier = Modifier.height(BrandSpacing.lg))
@@ -119,11 +132,17 @@ fun LoginScreen(
     }
 }
 
-/** Fila con los dos botones sociales (Google + Huella) compartiendo ancho 50/50. */
+/**
+ * Fila de botones sociales. La huella sólo aparece si [showFingerprint] es
+ * true, lo cual indica que ya hubo un login con contraseña en este
+ * dispositivo y por lo tanto Firebase tiene una sesión que la huella puede
+ * desbloquear.
+ */
 @Composable
 private fun SocialAuthButtonsRow(
     onGoogleClick: () -> Unit,
-    onFingerprintClick: () -> Unit
+    onFingerprintClick: () -> Unit,
+    showFingerprint: Boolean
 ) {
     androidx.compose.foundation.layout.Row(
         modifier = Modifier.fillMaxWidth(),
@@ -135,12 +154,14 @@ private fun SocialAuthButtonsRow(
             label = "Google",
             iconRes = R.drawable.ic_google_g
         )
-        SocialAuthButton(
-            modifier = Modifier.weight(1f),
-            onClick = onFingerprintClick,
-            label = "Huella",
-            iconVector = Icons.Outlined.Fingerprint
-        )
+        if (showFingerprint) {
+            SocialAuthButton(
+                modifier = Modifier.weight(1f),
+                onClick = onFingerprintClick,
+                label = "Huella",
+                iconVector = Icons.Outlined.Fingerprint
+            )
+        }
     }
 }
 

@@ -1,0 +1,30 @@
+{
+  "_comment": "PLANTILLA. Reemplaza este archivo por el google-services.json REAL descargado desde Firebase Console (Project Settings → Your apps → Android app → Download google-services.json) y guárdalo como app/google-services.json. El archivo real NO se sube a Git (está en .gitignore).",
+  "project_info": {
+    "project_number": "TU_PROJECT_NUMBER",
+    "project_id": "tu-project-id",
+    "storage_bucket": "tu-project-id.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:TU_PROJECT_NUMBER:android:HASH",
+        "android_client_info": {
+          "package_name": "com.cafeteros.historia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "TU_API_KEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

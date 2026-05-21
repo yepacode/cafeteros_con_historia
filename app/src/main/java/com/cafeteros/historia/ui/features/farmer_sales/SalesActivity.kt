@@ -6,31 +6,31 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cafeteros.historia.ui.theme.CafeterosTheme
 
 /**
- * Activity contenedora de [SalesScreen]. Por ahora todas las acciones
- * (toque en pedido, "Aceptar pedido", "Confirmar despacho", "Ver detalle")
- * muestran Toast "Próximamente" porque las pantallas de detalle aún no
- * existen. Cuando se diseñen, basta con cambiar los callbacks acá.
+ * Activity contenedora de [SalesScreen]. Observa los pedidos del caficultor
+ * vía [SalesViewModel] y los pasa a la pantalla. El tap en un pedido abre
+ * el detalle ([OrderDetailActivity]) donde se actualiza el estado.
  */
 class SalesActivity : ComponentActivity() {
+
+    private val viewModel: SalesViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CafeterosTheme {
+                val orders by viewModel.orders.collectAsStateWithLifecycle()
                 SalesScreen(
+                    orders = orders,
                     onBack = ::finish,
-                    onOrderTap = { orderNumber ->
-                        OrderDetailActivity.start(this, orderNumber)
-                    },
-                    onPrimaryAction = { orderNumber, action ->
-                        // Las acciones rápidas de la lista (Aceptar / Confirmar
-                        // despacho / Ver detalle) abren el detalle del pedido,
-                        // que es donde el caficultor termina de procesarlo.
-                        OrderDetailActivity.start(this, orderNumber)
+                    onOrderTap = { orderId ->
+                        OrderDetailActivity.start(this, orderId)
                     }
                 )
             }

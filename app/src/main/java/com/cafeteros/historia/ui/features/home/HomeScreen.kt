@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.AdminPanelSettings
 import androidx.compose.material.icons.outlined.Eco
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material3.Icon
@@ -105,6 +106,7 @@ private fun UserAvatar(userType: UserType) {
     val icon: ImageVector = when (userType) {
         UserType.COMPRADOR -> Icons.Outlined.ShoppingBag
         UserType.CAFICULTOR -> Icons.Outlined.Eco
+        UserType.ADMINISTRADOR -> Icons.Outlined.AdminPanelSettings
     }
     androidx.compose.foundation.layout.Box(
         modifier = Modifier
@@ -122,14 +124,10 @@ private fun UserAvatar(userType: UserType) {
 }
 
 /**
- * Insignia visible con el nombre del rol leído de la tabla `roles`.
+ * Insignia visible con el nombre del rol del usuario.
  *
- * Si [roleNameFromDb] tiene valor, significa que:
- *  1. La tabla `roles` existe y tiene la fila con id = [roleId].
- *  2. El JOIN users.role_id → roles.id funciona end-to-end.
- *  3. La FK del UserEntity está correctamente referenciada.
- *
- * Si está cargando aún, muestra un placeholder neutro.
+ * El valor se deriva del campo `roleId` del documento `/users/{uid}` en
+ * Firestore (vía `UserType.fromRoleId`), no de una tabla local.
  */
 @Composable
 private fun RoleBadge(roleNameFromDb: String?, roleId: Int) {
@@ -162,6 +160,9 @@ private fun roleWelcomeMessage(userType: UserType): String = when (userType) {
     UserType.CAFICULTOR ->
         "Aquí podrás contar tu historia, cargar tus cafés y conectar " +
                 "con compradores en toda Colombia. Pronto activamos tu panel."
+    UserType.ADMINISTRADOR ->
+        "Desde aquí gestionas la plataforma: usuarios, vendedores y " +
+                "contenido. Pronto verás el panel de administración."
 }
 
 @Preview(name = "HomeScreen – Comprador", widthDp = 360, heightDp = 720)
@@ -170,7 +171,7 @@ private fun HomeScreenBuyerPreview() {
     CafeterosTheme {
         HomeScreen(
             user = User(
-                id = 1L,
+                id = "preview-user-1",
                 email = "maria@correo.com",
                 name = "María González",
                 phone = "+57 300 123 4567",
@@ -188,7 +189,7 @@ private fun HomeScreenFarmerPreview() {
     CafeterosTheme {
         HomeScreen(
             user = User(
-                id = 2L,
+                id = "preview-user-2",
                 email = "carlos@finca.co",
                 name = "Carlos Restrepo",
                 phone = "+57 311 555 7788",

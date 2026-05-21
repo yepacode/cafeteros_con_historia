@@ -3,6 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
+      Permisos de red: requeridos por Firebase (Auth/Firestore/Storage),
+      por la pasarela ePayco y por la descarga de tiles de OpenStreetMap.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
       Cámara declarada como NO requerida: la app funciona sin cámara (el
       caficultor puede subir fotos desde la galería). Pero permitimos que
       Android la use cuando esté disponible. No declaramos
@@ -62,6 +69,17 @@
             android:exported="false"
             android:theme="@style/Theme.Cafeteros" />
 
+        <!--
+          Pantalla de "cuenta en revisión" del caficultor. El usuario
+          llega aquí desde MainActivity cuando su approvalStatus es
+          PENDING_APPROVAL o REJECTED, en lugar del panel.
+        -->
+        <activity
+            android:name=".ui.features.farmer_registration.FarmerPendingApprovalActivity"
+            android:exported="false"
+            android:label="En revisión"
+            android:theme="@style/Theme.Cafeteros" />
+
         <activity
             android:name=".ui.features.debug.DebugNavigationActivity"
             android:exported="false"
@@ -80,6 +98,55 @@
         <activity
             android:name=".ui.features.password_recovery.PasswordRecoveryActivity"
             android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!--
+          Pantalla de Configuración genérica reutilizada por los tres roles
+          (comprador, caficultor y administrador). Hoy expone únicamente el
+          toggle de autenticación con huella; el archivo está preparado para
+          crecer con más opciones (tema, idioma, notificaciones).
+        -->
+        <activity
+            android:name=".ui.features.settings.SettingsActivity"
+            android:exported="false"
+            android:label="Configuración"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!--
+          Catálogo MVP del comprador: lista de productos reales en Firestore
+          con compra inmediata de 1 unidad. Se accede desde ExploreScreen.
+        -->
+        <activity
+            android:name=".ui.features.buyer_catalog.BuyerCatalogActivity"
+            android:exported="false"
+            android:label="Catálogo"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!--
+          "Mis pedidos" del comprador: historial reactivo de sus compras
+          observado desde Firestore.
+        -->
+        <activity
+            android:name=".ui.features.buyer_catalog.MyPurchasesActivity"
+            android:exported="false"
+            android:label="Mis Pedidos"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!--
+          "Mi Cuenta" del comprador: centro de gravedad con sus pedidos,
+          direcciones, mensajes, notificaciones y configuración.
+        -->
+        <activity
+            android:name=".ui.features.buyer_profile.BuyerProfileActivity"
+            android:exported="false"
+            android:label="Mi Cuenta"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!-- Formulario simple para dejar reseña tras DELIVERED. -->
+        <activity
+            android:name=".ui.features.buyer_catalog.LeaveReviewActivity"
+            android:exported="false"
+            android:label="Dejar reseña"
             android:theme="@style/Theme.Cafeteros" />
 
         <activity
@@ -301,11 +368,6 @@
             android:theme="@style/Theme.Cafeteros" />
 
         <activity
-            android:name=".ui.features.farmer_reviews.ReplyReviewActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Cafeteros" />
-
-        <activity
             android:name=".ui.features.farmer_profile.MyProfileActivity"
             android:exported="false"
             android:theme="@style/Theme.Cafeteros" />
@@ -325,12 +387,7 @@
             android:exported="false"
             android:theme="@style/Theme.Cafeteros" />
 
-        <activity
-            android:name=".ui.features.farmer_profile.FarmerSettingsActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Cafeteros" />
-
-        <activity
+<activity
             android:name=".ui.features.farmer_notifications.NotificationsActivity"
             android:exported="false"
             android:theme="@style/Theme.Cafeteros" />
@@ -343,6 +400,42 @@
         <activity
             android:name=".ui.features.farmer_help.SellerAgreementActivity"
             android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!--
+          Activities del rol Administrador. Internas (no exportadas): solo se
+          lanzan desde MainActivity tras detectar UserType.ADMINISTRADOR o
+          desde el AdminDashboard como navegación interna.
+        -->
+        <activity
+            android:name=".ui.features.admin.AdminDashboardActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.admin.UserManagementActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.admin.ProductManagementActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <activity
+            android:name=".ui.features.admin.SalesReportActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cafeteros" />
+
+        <!--
+          Panel del admin para revisar caficultores con cuenta pendiente
+          de aprobación. Ve datos y documentos y decide aprobar o
+          rechazar.
+        -->
+        <activity
+            android:name=".ui.features.admin.PendingApprovalsActivity"
+            android:exported="false"
+            android:label="Caficultores pendientes"
             android:theme="@style/Theme.Cafeteros" />
 
         <!--

@@ -2,61 +2,88 @@ package com.cafeteros.historia.data.local.preferences
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
- * Extensión de [Context] que crea/recupera un único [androidx.datastore.core.DataStore]
- * con nombre "session" para toda la app.
- *
- * Vive como propiedad de extensión por convención: así cualquier
- * `applicationContext.sessionDataStore` apunta a la misma instancia y
- * DataStore garantiza concurrencia segura.
+ * Único [androidx.datastore.core.DataStore] llamado "session" usado por la app.
+ * Se expone como propiedad de extensión para garantizar que sea singleton.
  */
 private val Context.sessionDataStore by preferencesDataStore(name = "session")
 
-/** Identificador del usuario actualmente logueado, o ausente si no hay sesión. */
-private val KEY_CURRENT_USER_ID = longPreferencesKey("current_user_id")
-
-/** Valor centinela para "no hay usuario logueado" en el campo `Long`. */
-private const val NO_USER_ID: Long = -1L
-
 /**
- * Maneja la sesión persistente de la app: qué usuario está logueado entre
- * arranques.
+ * Banderas locales de la sesión que complementan a Firebase Auth.
  *
- * Se eligió DataStore (no Room) porque la sesión es un dato escalar simple
- * (un id) y DataStore expone un [Flow] reactivo, perfecto para que la UI se
- * actualice automáticamente cuando se cierra/abre sesión.
+ * **Firebase Auth ya persiste los tokens de la sesión por nosotros**, así que
+ * ya no es necesario guardar `current_user_id`. Lo que sí guardamos aquí son
+ * preferencias del dispositivo:
  *
- * @param context cualquier [Context]; internamente se usa el `applicationContext`.
+ *  - [biometricEnabledFlow]: si el usuario activó el login con huella.
+ *  - [lastEmailFlow]:        último correo usado, para autocompletar el
+ *                            campo "Email" en la próxima apertura.
+ *
+ * Estas son preferencias *locales al dispositivo* — si el usuario se loguea
+ * en otro celular, la app le pedirá email/clave aunque ya tenga sesión
+ * activa en Firebase desde otro equipo.
  */
 class SessionDataStore(context: Context) {
 
     private val dataStore = context.applicationContext.sessionDataStore
 
+    /** `true` si el usuario aceptó usar biometría para reabrir la sesión. */
+    val biometricEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs: Preferences ->
+        prefs[KEY_BIOMETRIC_ENABLED] ?: false
+    }
+
+    /** Último email usado para login; sirve para autocompletar. */
+    val lastEmailFlow: Flow<String?> = dataStore.data.map { prefs: Preferences ->
+        prefs[KEY_LAST_EMAIL]
+    }
+
+    /** Snapshot puntual del flag biométrico. */
+    suspend fun isBiometricEnabled(): Boolean = biometricEnabledFlow.first()
+
+    /** Snapshot puntual del último email. */
+    suspend fun lastEmail(): String? = lastEmailFlow.first()
+
+    /** Activa/desactiva el login biométrico. */
+    suspend fun setBiometricEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_BIOMETRIC_ENABLED] = enabled }
+    }
+
+    /** Guarda el último email usado al iniciar sesión correctamente. */
+    suspend fun setLastEmail(email: String) {
+        dataStore.edit { prefs -> prefs[KEY_LAST_EMAIL] = email }
+    }
+
     /**
-     * Flujo del id del usuario logueado. Emite `null` cuando no hay sesión
-     * activa.
+     * Limpia las banderas de sesión tras un logout: desactiva la biometría
+     * (ya no hay sesión Firebase que desbloquear) pero **mantiene** el
+     * último email para que el próximo login lo autocomplete. El email no
+     * es información sensible y mejora la UX.
      */
-    val currentUserIdFlow: Flow<Long?> = dataStore.data.map { prefs: Preferences ->
-        prefs[KEY_CURRENT_USER_ID]?.takeIf { it != NO_USER_ID }
-    }
-
-    /** Persiste el id del usuario logueado al iniciar/cerrar sesión. */
-    suspend fun setCurrentUserId(userId: Long) {
-        dataStore.edit { prefs ->
-            prefs[KEY_CURRENT_USER_ID] = userId
-        }
-    }
-
-    /** Borra la sesión actual (logout). */
     suspend fun clear() {
         dataStore.edit { prefs ->
-            prefs.remove(KEY_CURRENT_USER_ID)
+            prefs.remove(KEY_BIOMETRIC_ENABLED)
+            // Nota: NO removemos KEY_LAST_EMAIL a propósito.
         }
+    }
+
+    /** Limpia TODO incluyendo el último email. Solo para "olvidar dispositivo". */
+    suspend fun clearAll() {
+        dataStore.edit { prefs ->
+            prefs.remove(KEY_BIOMETRIC_ENABLED)
+            prefs.remove(KEY_LAST_EMAIL)
+        }
+    }
+
+    private companion object {
+        val KEY_BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
+        val KEY_LAST_EMAIL = stringPreferencesKey("last_email")
     }
 }

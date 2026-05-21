@@ -14,10 +14,21 @@ activityCompose = "1.9.3"
 lifecycleRuntimeCompose = "2.8.7"
 composeBom = "2024.10.01"
 biometric = "1.1.0"
-room = "2.7.0"
 datastore = "1.1.1"
+# EncryptedSharedPreferences para guardar credenciales del usuario tras
+# login con contraseña, de modo que el botón "Iniciar con huella" pueda
+# rehidratar la sesión sin pedir password de nuevo.
+securityCrypto = "1.1.0-alpha06"
 lifecycleViewmodelCompose = "2.8.7"
 coil = "2.7.0"
+# Firebase BoM agrupa versiones compatibles de Auth/Firestore/Storage.
+firebaseBom = "34.13.0"
+googleServicesPlugin = "4.4.4"
+# Geolocalización: GPS nativo + mapa OpenStreetMap (sin API key).
+playServicesLocation = "21.3.0"
+osmdroid = "6.1.20"
+# Permite usar await() sobre Tasks de Firebase desde coroutines.
+coroutinesPlayServices = "1.9.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -39,14 +50,29 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
-androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
-androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
-androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+
+# ── Firebase: BoM controla versiones de todos los SDKs hijos ──────
+# Nota: desde BoM 34+, los artefactos -ktx se fusionaron con los principales.
+# Las APIs Kotlin (callbackFlow, await, etc.) viven en el módulo base.
+# Storage se omite a propósito: requiere Blaze (pago). Imágenes van en
+# Firestore como Base64 comprimido.
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
+firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
+
+# ── Geolocalización ───────────────────────────────────────────────
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
+osmdroid-android = { group = "org.osmdroid", name = "osmdroid-android", version.ref = "osmdroid" }
+
+# ── Coroutines + Play Services (await() para Tasks) ───────────────
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServicesPlugin" }

@@ -24,6 +24,15 @@ import com.cafeteros.historia.ui.theme.CafeterosTheme
  *
  * Conecta [LoginScreen] con [LoginViewModel]: pasa email/contraseña al
  * ViewModel, observa el estado y navega a Home cuando el login es exitoso.
+ *
+ * **Lógica del botón de huella:**
+ *  - Solo se muestra si el ViewModel reporta `canUseBiometric=true`, lo cual
+ *    sucede tras al menos un login previo exitoso con contraseña en este
+ *    dispositivo (y antes de hacer logout).
+ *  - Al pulsar huella, primero validamos que Firebase tenga sesión persistida
+ *    (`currentUid != null`). Si sí, se lanza el `BiometricPrompt`; si la
+ *    huella es correcta, se entra directo a Home. Si no hay sesión, se le
+ *    avisa al usuario que escriba la contraseña.
  */
 class LoginActivity : FragmentActivity() {
 
@@ -38,6 +47,7 @@ class LoginActivity : FragmentActivity() {
         setContent {
             CafeterosTheme {
                 val state by viewModel.uiState.collectAsStateWithLifecycle()
+                val prefs by viewModel.preferences.collectAsStateWithLifecycle()
 
                 LaunchedEffect(state.errorMessage) {
                     state.errorMessage?.let { message ->
@@ -51,6 +61,8 @@ class LoginActivity : FragmentActivity() {
                 }
 
                 LoginScreen(
+                    initialEmail = prefs.lastEmail.orEmpty(),
+                    showFingerprint = prefs.canUseBiometric,
                     onBack = ::finish,
                     onLogin = { email, password -> viewModel.login(email, password) },
                     onForgotPassword = ::navigateToPasswordRecovery,
@@ -64,11 +76,21 @@ class LoginActivity : FragmentActivity() {
         }
     }
 
-    /** Lanza el [BiometricPrompt] real y enruta según el resultado. */
+    /**
+     * Lanza el [androidx.biometric.BiometricPrompt]. Si hay credenciales
+     * cifradas guardadas, la huella inicia sesión completa (lee email +
+     * contraseña de la bóveda y autentica contra Firebase). Si no hay
+     * credenciales (primer arranque o "olvidar dispositivo" previo), avisa
+     * que primero debe iniciarse con contraseña.
+     */
     private fun launchBiometric() {
+        if (!viewModel.canLoginWithBiometric()) {
+            showToast("Inicia con tu contraseña la primera vez. La huella servirá luego como atajo.")
+            return
+        }
         biometricAuthenticator.authenticate { result ->
             when (result) {
-                is BiometricResult.Success -> navigateToHome()
+                is BiometricResult.Success -> viewModel.loginWithBiometric()
                 is BiometricResult.Cancelled -> Unit
                 is BiometricResult.Unavailable -> showToast(result.reason)
                 is BiometricResult.Error -> showToast(result.message)

@@ -19,5 +19,7 @@ data class CoffeeRegion(
     val name: String,
     val caficultorCount: Int,
     @param:DrawableRes val imageRes: Int? = null,
-    val placeholderColor: Color
+    val placeholderColor: Color,
+    /** Nombre de la región tal como está almacenado en FarmProfile.region. */
+    val regionKey: String = name
 )

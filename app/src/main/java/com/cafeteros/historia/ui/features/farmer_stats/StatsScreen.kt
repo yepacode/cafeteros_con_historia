@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
@@ -73,12 +75,17 @@ private val MOCK_DAILY_INCOME: List<Pair<String, Float>> = listOf(
 )
 
 class StatsActivity : ComponentActivity() {
+
+    private val viewModel: StatsViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             CafeterosTheme {
+                val state by viewModel.uiState.collectAsStateWithLifecycle()
                 StatsScreen(
+                    state = state,
                     onBack = ::finish,
                     onExport = {
                         Toast.makeText(this, "Próximamente: exportar PDF", Toast.LENGTH_SHORT).show()
@@ -100,10 +107,11 @@ class StatsActivity : ComponentActivity() {
 
 @Composable
 fun StatsScreen(
-    modifier: Modifier = Modifier,
+    state: StatsUiState,
     onBack: () -> Unit,
     onExport: () -> Unit,
-    onOpenReviews: () -> Unit = {}
+    onOpenReviews: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     var range by remember { mutableStateOf(StatsRange.THIRTY_DAYS) }
 
@@ -158,33 +166,38 @@ fun StatsScreen(
                 }
             }
 
-            // Métricas 2x2
+            // Métricas 2x2 — valores reales del inventario actual del
+            // caficultor. Los conceptos "ventas / pedidos / reseñas"
+            // aparecerán cuando se conecte el módulo de pedidos.
+            val inventoryValueFmt = "$" + "%,d".format(state.inventoryValueCop).replace(',', '.')
             Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
                 MetricBigTile(
                     modifier = Modifier.weight(1f),
-                    label = "INGRESOS TOTALES",
-                    value = "\$4.850.000",
-                    delta = "+18%"
+                    label = "VALOR INVENTARIO",
+                    value = inventoryValueFmt,
+                    delta = null
                 )
                 MetricBigTile(
                     modifier = Modifier.weight(1f),
-                    label = "PEDIDOS",
-                    value = "47",
-                    delta = "+8%"
+                    label = "PRODUCTOS ACTIVOS",
+                    value = state.activeProductCount.toString(),
+                    delta = if (state.pausedProductCount > 0)
+                        "${state.pausedProductCount} pausados" else null
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
                 MetricBigTile(
                     modifier = Modifier.weight(1f),
-                    label = "PRODUCTOS VENDIDOS",
-                    value = "126 uds",
-                    delta = "+12%"
+                    label = "STOCK TOTAL",
+                    value = "${state.totalStockUnits} uds",
+                    delta = if (state.outOfStockCount > 0)
+                        "${state.outOfStockCount} agotados" else null
                 )
                 MetricBigTile(
                     modifier = Modifier.weight(1f),
-                    label = "VALORACIÓN PROMEDIO",
-                    value = "★ 4.9",
-                    delta = "+0.2"
+                    label = "PEDIDOS",
+                    value = "0",
+                    delta = "Aún sin pedidos"
                 )
             }
 
@@ -245,32 +258,79 @@ fun StatsScreen(
                 }
             }
 
-            // Productos destacados
-            SectionTitle("Productos destacados")
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
-                    .padding(BrandSpacing.md),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MOCK_TOP_PRODUCTS.forEach { p ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(text = p.name, color = BrandColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text(text = p.sales, color = BrandColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .background(BrandColors.IndicatorInactive, RoundedCornerShape(3.dp))
-                        ) {
+            // Productos destacados — top por valor de inventario
+            SectionTitle("Tus productos por valor de inventario")
+            if (state.topByValue.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
+                        .padding(BrandSpacing.lg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Aún no tienes productos publicados.",
+                        color = BrandColors.TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+            } else {
+                val maxValue = state.topByValue.maxOf { it.priceCop.toLong() * it.stockUnits }
+                    .coerceAtLeast(1L)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(BrandColors.CardBackground, RoundedCornerShape(12.dp))
+                        .padding(BrandSpacing.md),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    state.topByValue.forEach { product ->
+                        val productValue = product.priceCop.toLong() * product.stockUnits
+                        val ratio = (productValue.toFloat() / maxValue.toFloat())
+                            .coerceIn(0.05f, 1f)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = product.name,
+                                    color = BrandColors.TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = "$" + "%,d".format(productValue).replace(',', '.'),
+                                    color = BrandColors.TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth(p.percent)
+                                    .fillMaxWidth()
                                     .height(6.dp)
-                                    .background(BrandColors.FarmerPrimary, RoundedCornerShape(3.dp))
+                                    .background(
+                                        BrandColors.IndicatorInactive,
+                                        RoundedCornerShape(3.dp)
+                                    )
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(ratio)
+                                        .height(6.dp)
+                                        .background(
+                                            BrandColors.FarmerPrimary,
+                                            RoundedCornerShape(3.dp)
+                                        )
+                                )
+                            }
+                            Text(
+                                text = "${product.stockUnits} uds · $" +
+                                    "%,d".format(product.priceCop).replace(',', '.') + " c/u",
+                                color = BrandColors.TextSecondary,
+                                fontSize = 11.sp
                             )
                         }
                     }

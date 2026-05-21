@@ -146,22 +146,14 @@ fun VerificationStatusStep(
                 onActionClick = { /* TODO: abrir video */ }
             )
 
-            if (onAdvanceDemo != null) {
-                Spacer(modifier = Modifier.height(BrandSpacing.md))
-                Button(
-                    onClick = onAdvanceDemo,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BrandColors.FarmerPrimary,
-                        contentColor = BrandColors.PrimaryButtonText
-                    )
-                ) {
-                    Text(text = "Continuar")
-                }
-            }
+            // ⚠️ El botón "Continuar" que saltaba a WelcomeApproved fue
+            // removido a propósito: la aprobación ahora la hace un
+            // administrador desde su panel revisando los documentos.
+            // El caficultor debe esperar; cuando admin apruebe, el
+            // observer del flow en MainActivity lo enrutará al panel.
+            // El parámetro `onAdvanceDemo` se conserva en la firma para
+            // no romper callers pero ya no se usa visualmente.
+            @Suppress("UNUSED_EXPRESSION") onAdvanceDemo
 
             Spacer(modifier = Modifier.height(BrandSpacing.lg))
             SupportFooter(

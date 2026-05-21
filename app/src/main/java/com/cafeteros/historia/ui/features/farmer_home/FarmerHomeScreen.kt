@@ -37,13 +37,19 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.cafeteros.historia.data.model.Order
+import com.cafeteros.historia.data.model.Product
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -130,8 +136,8 @@ private val WEEK_SALES_BARS: List<Pair<String, Float>> = listOf(
 @Composable
 fun FarmerHomeScreen(
     modifier: Modifier = Modifier,
-    userFirstName: String?,
-    farmName: String?,
+    @Suppress("UNUSED_PARAMETER") userFirstName: String? = null,
+    @Suppress("UNUSED_PARAMETER") farmName: String? = null,
     onLogout: () -> Unit,
     onCreateProduct: () -> Unit,
     onOpenProductsList: () -> Unit,
@@ -145,6 +151,12 @@ fun FarmerHomeScreen(
     onOpenReviews: () -> Unit,
     onSectionTap: (String) -> Unit
 ) {
+    // El state real ahora viene del VM (User + Farm + productos en Firestore).
+    // Los params `userFirstName` y `farmName` se ignoran — se mantienen en la
+    // firma sólo para no romper a callers existentes mientras se migra.
+    val viewModel: FarmerHomeViewModel = viewModel()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+
     Box(modifier = modifier.fillMaxSize().background(BrandColors.AuthBackground)) {
         Column(
             modifier = Modifier
@@ -155,15 +167,20 @@ fun FarmerHomeScreen(
             verticalArrangement = Arrangement.spacedBy(BrandSpacing.md)
         ) {
             FarmerHomeHeader(
-                userFirstName = userFirstName,
-                farmName = farmName,
-                notificationCount = 3,
+                userFirstName = state.firstName.takeIf { it.isNotBlank() },
+                farmName = state.farmName.takeIf { it.isNotBlank() },
+                notificationCount = state.lowStock.size + state.outOfStockCount,
                 onAvatarClick = onLogout,
                 onBellClick = onOpenNotifications
             )
             Greeting()
-            TodaySummaryCard()
-            OrdersAlertCard(onClick = { onSectionTap("Pedidos por empacar") })
+            TodaySummaryCard(state = state)
+            if (state.pendingOrders.isNotEmpty()) {
+                OrdersAlertCard(
+                    pendingCount = state.pendingOrders.size,
+                    onClick = onOpenSales
+                )
+            }
             QuickActionsGrid(
                 onCreateProduct = onCreateProduct,
                 onOpenInventory = onOpenInventory,
@@ -173,8 +190,13 @@ fun FarmerHomeScreen(
                 onOpenReviews = onOpenReviews,
                 onAction = onSectionTap
             )
-            OrdersToPackSection(onSeeAll = onOpenSales)
-            LowStockSection(onRestock = onOpenInventory)
+            if (state.pendingOrders.isNotEmpty()) {
+                OrdersToPackSection(
+                    pendingOrders = state.pendingOrders,
+                    onSeeAll = onOpenSales
+                )
+            }
+            LowStockSection(lowStock = state.lowStock, onRestock = onOpenInventory)
             WeekSalesChart(onTap = onOpenStats)
             TipOfDayCard()
         }
@@ -301,7 +323,7 @@ private fun Greeting() {
 // ── Card oscuro: resumen del día ────────────────────────────────────────────
 
 @Composable
-private fun TodaySummaryCard() {
+private fun TodaySummaryCard(state: FarmerHomeUiState) {
     Column(
         modifier = Modifier
             .padding(horizontal = BrandSpacing.lg)
@@ -311,16 +333,25 @@ private fun TodaySummaryCard() {
         verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
     ) {
         Text(
-            text = "RESUMEN DE HOY",
+            text = "TU INVENTARIO HOY",
             color = BrandColors.CreamWhiteMuted,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.5.sp
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            SummaryStat(label = "VENTAS", value = "\$245.000")
-            SummaryStat(label = "PEDIDOS", value = "3 nuevos")
-            SummaryStat(label = "VISITAS", value = "47")
+            SummaryStat(
+                label = "VALOR",
+                value = "$" + "%,d".format(state.inventoryValueCop).replace(',', '.')
+            )
+            SummaryStat(
+                label = "PRODUCTOS",
+                value = state.activeProductsCount.toString()
+            )
+            SummaryStat(
+                label = "STOCK",
+                value = state.totalStockUnits.toString()
+            )
         }
     }
 }
@@ -348,7 +379,7 @@ private fun SummaryStat(label: String, value: String) {
 // ── Alerta amarilla "Tienes pedidos por empacar" ────────────────────────────
 
 @Composable
-private fun OrdersAlertCard(onClick: () -> Unit) {
+private fun OrdersAlertCard(pendingCount: Int, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .padding(horizontal = BrandSpacing.lg)
@@ -366,7 +397,7 @@ private fun OrdersAlertCard(onClick: () -> Unit) {
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = "Tienes 2 pedidos por empacar",
+            text = "Tienes $pendingCount pedido${if (pendingCount == 1) "" else "s"} por procesar",
             modifier = Modifier.weight(1f),
             fontSize = 13.sp,
             color = BrandColors.TextPrimary
@@ -502,7 +533,7 @@ private fun QuickAction(
 // ── Sección "Pedidos por empacar" con lista horizontal ──────────────────────
 
 @Composable
-private fun OrdersToPackSection(onSeeAll: () -> Unit) {
+private fun OrdersToPackSection(pendingOrders: List<Order>, onSeeAll: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(BrandSpacing.sm)) {
         Row(
             modifier = Modifier
@@ -512,7 +543,7 @@ private fun OrdersToPackSection(onSeeAll: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Pedidos por empacar (${MOCK_ORDERS_TO_PACK.size})",
+                text = "Pedidos por empacar (${pendingOrders.size})",
                 style = TextStyle(
                     fontFamily = FontFamily.Serif,
                     fontSize = 20.sp,
@@ -532,13 +563,14 @@ private fun OrdersToPackSection(onSeeAll: () -> Unit) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = BrandSpacing.lg),
             horizontalArrangement = Arrangement.spacedBy(BrandSpacing.sm)
         ) {
-            items(MOCK_ORDERS_TO_PACK) { order -> OrderCard(order = order) }
+            items(pendingOrders) { order -> RealOrderCard(order = order) }
         }
     }
 }
 
+/** Card horizontal de un pedido real. Reemplaza el MockOrder original. */
 @Composable
-private fun OrderCard(order: MockOrder) {
+private fun RealOrderCard(order: Order) {
     Column(
         modifier = Modifier
             .width(280.dp)
@@ -547,14 +579,14 @@ private fun OrderCard(order: MockOrder) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            text = "ORDEN #${order.orderId}",
+            text = "ORDEN #${order.id.take(8).uppercase()}",
             color = BrandColors.TextSecondary,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.8.sp
         )
         Text(
-            text = order.product,
+            text = order.items.firstOrNull()?.productName ?: "Pedido",
             style = TextStyle(
                 fontFamily = FontFamily.Serif,
                 fontSize = 18.sp,
@@ -562,6 +594,14 @@ private fun OrderCard(order: MockOrder) {
                 color = BrandColors.TextPrimary
             )
         )
+        if (order.items.size > 1) {
+            Text(
+                text = "+ ${order.items.size - 1} producto${if (order.items.size - 1 == 1) "" else "s"} más",
+                color = BrandColors.TextSecondary,
+                fontSize = 11.sp,
+                fontStyle = FontStyle.Italic
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(
                 imageVector = Icons.Outlined.Person,
@@ -570,7 +610,7 @@ private fun OrderCard(order: MockOrder) {
                 modifier = Modifier.size(14.dp)
             )
             Text(
-                text = "${order.customerName}, ${order.customerCity}",
+                text = order.compradorName.ifBlank { "Comprador" },
                 color = BrandColors.TextSecondary,
                 fontSize = 13.sp
             )
@@ -582,7 +622,8 @@ private fun OrderCard(order: MockOrder) {
                 .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
             Text(
-                text = "⏰ EMPACA ANTES DE: ${order.deadline}",
+                text = "📦 ESTADO: ${order.status.label.uppercase()} · $" +
+                    "%,d".format(order.totalCop).replace(',', '.'),
                 color = BrandColors.InfoBannerAction,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -595,7 +636,8 @@ private fun OrderCard(order: MockOrder) {
 // ── Productos con stock bajo ────────────────────────────────────────────────
 
 @Composable
-private fun LowStockSection(onRestock: () -> Unit) {
+private fun LowStockSection(lowStock: List<Product>, onRestock: () -> Unit) {
+    if (lowStock.isEmpty()) return
     Column(
         modifier = Modifier
             .padding(horizontal = BrandSpacing.lg)
@@ -610,7 +652,7 @@ private fun LowStockSection(onRestock: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             color = BrandColors.TextPrimary
         )
-        MOCK_LOW_STOCK.forEachIndexed { index, item ->
+        lowStock.forEachIndexed { index, product ->
             if (index > 0) {
                 Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(BrandColors.DividerLine))
             }
@@ -619,9 +661,10 @@ private fun LowStockSection(onRestock: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = item.product, fontSize = 14.sp, color = BrandColors.TextPrimary)
+                    Text(text = product.name, fontSize = 14.sp, color = BrandColors.TextPrimary)
+                    val units = product.stockUnits
                     Text(
-                        text = "Solo queda${if (item.unitsLeft == 1) "" else "n"} ${item.unitsLeft} unidad${if (item.unitsLeft == 1) "" else "es"}",
+                        text = "Solo queda${if (units == 1) "" else "n"} $units unidad${if (units == 1) "" else "es"}",
                         color = Color(0xFFB23A3A),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium

@@ -35,17 +35,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
-import com.cafeteros.historia.ui.features.farmer_products.model.Product
-import com.cafeteros.historia.ui.features.farmer_products.model.ProductsStore
+import com.cafeteros.historia.data.model.Product
+import com.cafeteros.historia.ui.components.Base64Image
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 
@@ -85,29 +82,33 @@ private val MOCK_RECENT_MOVEMENTS: List<MockMovement> = listOf(
 )
 
 /**
- * Pantalla de gestión de inventario del caficultor. Lee el estado de
- * [ProductsStore] reactivamente y calcula sus métricas en vivo.
+ * Pantalla de gestión de inventario del caficultor. Stateless: recibe la
+ * lista de productos del contenedor (que la observa desde
+ * [com.cafeteros.historia.data.repository.ProductRepository]) y delega
+ * cualquier modificación vía [onUpdateStock].
  *
  * Diferencias con [com.cafeteros.historia.ui.features.farmer_products.ProductListScreen]:
  *  - Se enfoca en **gestión de stock** (steppers +/-, alertas, movimientos)
  *    en vez de catálogo público.
  *  - Permite filtrar por estado del stock (Todos / Bajo / Agotados).
- *  - Modifica el `stockUnits` de los productos directamente vía
- *    [ProductsStore.update].
+ *  - Modifica el `stockUnits` con +/− que llaman a [onUpdateStock].
  *
+ * @param products productos del caficultor observados desde Firestore.
  * @param onBack flecha atrás del header — termina la activity.
  * @param onProductTap callback al tocar un producto (abre edición completa).
+ * @param onUpdateStock callback para persistir el nuevo stock en Firestore.
  * @param onMassAction callback genérico para "Exportar/Importar CSV", aún
  *  no implementadas. Muestra Toast "Próximamente".
  */
 @Composable
 fun InventoryScreen(
-    modifier: Modifier = Modifier,
+    products: List<Product>,
     onBack: () -> Unit,
     onProductTap: (Product) -> Unit,
-    onMassAction: (String) -> Unit
+    onUpdateStock: (productId: String, newStock: Int) -> Unit,
+    onMassAction: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val products by ProductsStore.productsFlow.collectAsStateWithLifecycle()
     var activeFilter by remember { mutableStateOf(InventoryFilter.ALL) }
     var notifyOnLowStock by remember { mutableStateOf(true) }
     var pauseWhenOutOfStock by remember { mutableStateOf(false) }
@@ -157,11 +158,11 @@ fun InventoryScreen(
                         product = product,
                         onTap = { onProductTap(product) },
                         onIncrement = {
-                            ProductsStore.update(product.copy(stockUnits = product.stockUnits + 1))
+                            onUpdateStock(product.id, product.stockUnits + 1)
                         },
                         onDecrement = {
                             if (product.stockUnits > 0) {
-                                ProductsStore.update(product.copy(stockUnits = product.stockUnits - 1))
+                                onUpdateStock(product.id, product.stockUnits - 1)
                             }
                         }
                     )
@@ -348,24 +349,13 @@ private fun InventoryRow(
             .padding(BrandSpacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (product.photoUri != null) {
-            AsyncImage(
-                model = product.photoUri,
-                contentDescription = product.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(BrandColors.InputBackground, RoundedCornerShape(8.dp))
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(BrandColors.InputBackground, RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) { Text(text = "📷", fontSize = 18.sp) }
-        }
+        Base64Image(
+            base64 = product.imageBase64,
+            contentDescription = product.name,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
 
         Column(modifier = Modifier.weight(1f).padding(horizontal = BrandSpacing.sm)) {
             Text(

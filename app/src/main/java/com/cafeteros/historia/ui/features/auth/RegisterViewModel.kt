@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.cafeteros.historia.CafeterosApplication
+import com.cafeteros.historia.data.local.preferences.SessionDataStore
 import com.cafeteros.historia.data.repository.RegisterResult
 import com.cafeteros.historia.data.repository.UserRepository
 import com.cafeteros.historia.ui.features.auth.components.UserType
@@ -15,7 +16,7 @@ import kotlinx.coroutines.launch
 /**
  * Estado UI del flujo de Registro.
  *
- * @param isSubmitting true mientras se ejecuta el insert en DB.
+ * @param isSubmitting true mientras Firebase crea la cuenta.
  * @param errorMessage mensaje a mostrar al usuario; null si no hay error.
  * @param registeredSuccessfully true cuando la cuenta se creó y se inició sesión;
  *  la Activity observa este flag para navegar a Home.
@@ -29,14 +30,22 @@ data class RegisterUiState(
 /**
  * ViewModel que orquesta el registro de un nuevo usuario.
  *
- * Recibe los datos del formulario, los pasa al [UserRepository] y expone el
- * resultado vía [uiState]. La Activity solo se preocupa por dibujar la UI y
- * reaccionar al estado.
+ * Llama a [UserRepository.register] (que detrás crea la cuenta en Firebase
+ * Auth y el perfil en Firestore) y expone el resultado vía [uiState]. La
+ * Activity solo dibuja la UI y reacciona al estado.
  */
 class RegisterViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val userRepository: UserRepository =
-        (application as CafeterosApplication).userRepository
+    private val app = application as CafeterosApplication
+    private val userRepository: UserRepository = app.userRepository
+
+    /**
+     * Banderas locales del dispositivo. Aquí solo nos interesa guardar el
+     * último email tras un registro exitoso, para que el próximo arranque de
+     * la app autocomplete el campo de Login. La activación de huella se
+     * maneja desde la pantalla de Configuración como un opt-in explícito.
+     */
+    private val sessionPreferences: SessionDataStore = app.sessionPreferences
 
     private val _uiState = MutableStateFlow(RegisterUiState())
     val uiState: StateFlow<RegisterUiState> = _uiState.asStateFlow()
@@ -64,13 +73,23 @@ class RegisterViewModel(application: Application) : AndroidViewModel(application
                 userType = userType
             )
             _uiState.value = when (result) {
-                is RegisterResult.Success -> RegisterUiState(registeredSuccessfully = true)
-                is RegisterResult.EmailAlreadyExists -> RegisterUiState(
-                    errorMessage = "Ya existe una cuenta con ese correo. Inicia sesión."
-                )
-                is RegisterResult.UnknownError -> RegisterUiState(
-                    errorMessage = "No pudimos crear tu cuenta. Intenta de nuevo."
-                )
+                is RegisterResult.Success -> {
+                    // Tras crear la cuenta, Firebase Auth ya dejó al usuario
+                    // con sesión activa. Persistimos el correo (normalizado)
+                    // para que el próximo arranque autocomplete el campo de
+                    // Login. NO activamos la biometría automáticamente: se
+                    // habilita desde Configuración con verificación previa.
+                    sessionPreferences.setLastEmail(email.trim().lowercase())
+                    RegisterUiState(registeredSuccessfully = true)
+                }
+                RegisterResult.EmailAlreadyExists ->
+                    RegisterUiState(errorMessage = "Ya existe una cuenta con ese correo. Inicia sesión.")
+                RegisterResult.WeakPassword ->
+                    RegisterUiState(errorMessage = "La contraseña debe tener al menos 6 caracteres.")
+                RegisterResult.InvalidEmail ->
+                    RegisterUiState(errorMessage = "El correo tiene un formato inválido.")
+                is RegisterResult.UnknownError ->
+                    RegisterUiState(errorMessage = "No pudimos crear tu cuenta: ${result.message}")
             }
         }
     }

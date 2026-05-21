@@ -21,5 +21,9 @@ data class CoffeeProduct(
     val farmName: String,
     val formattedPrice: String,
     @param:DrawableRes val imageRes: Int? = null,
-    val placeholderColor: Color
+    val placeholderColor: Color,
+    /** id del documento en Firestore (para navegar al ProductDetail real). */
+    val productId: String = "",
+    /** Foto del producto en Base64 (sobreescribe imageRes si está). */
+    val imageBase64: String? = null
 )

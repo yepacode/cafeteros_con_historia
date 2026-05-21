@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
@@ -66,7 +67,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -83,22 +87,29 @@ import com.cafeteros.historia.ui.features.farmer_notifications.NotificationsActi
 import com.cafeteros.historia.ui.features.farmer_reviews.ReviewsActivity
 import com.cafeteros.historia.ui.features.farmer_stats.StatsActivity
 import com.cafeteros.historia.ui.features.farmer_wallet.WalletActivity
+import com.cafeteros.historia.ui.features.settings.SettingsActivity
 import com.cafeteros.historia.ui.theme.BrandColors
 import com.cafeteros.historia.ui.theme.BrandSpacing
 import com.cafeteros.historia.ui.theme.CafeterosTheme
 
 class MyProfileActivity : ComponentActivity() {
+
+    private val viewModel: MyProfileViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val repo = (application as com.cafeteros.historia.CafeterosApplication).userRepository
         setContent {
             CafeterosTheme {
+                val state by viewModel.uiState
+                    .collectAsStateWithLifecycle()
                 MyProfileScreen(
-                    userFirstName = "Don Alberto",
-                    userLastName = "Ramírez",
-                    farmName = "Finca La Esperanza",
-                    onSettings = { FarmerSettingsActivity.start(this) },
+                    state = state,
+                    // El icono de engranaje del top bar abre la pantalla de
+                    // Configuración con el toggle real de huella, en lugar
+                    // de la pantalla mock de FarmerSettingsActivity.
+                    onSettings = { SettingsActivity.start(this) },
                     onPreviewPublic = { PublicProfilePreviewActivity.start(this) },
                     onOpenEditFarm = { EditFarmActivity.start(this) },
                     onOpenCertifications = { CertificationsActivity.start(this) },
@@ -109,6 +120,10 @@ class MyProfileActivity : ComponentActivity() {
                     onOpenNotifications = { NotificationsActivity.start(this) },
                     onOpenHelp = { HelpAndSupportActivity.start(this) },
                     onOpenTerms = { SellerAgreementActivity.start(this) },
+                    onOpenProductList = {
+                        com.cafeteros.historia.ui.features.farmer_products
+                            .ProductListActivity.start(this)
+                    },
                     onLogout = {
                         lifecycleScope.launch {
                             repo.logout()
@@ -151,10 +166,7 @@ class MyProfileActivity : ComponentActivity() {
 
 @Composable
 fun MyProfileScreen(
-    modifier: Modifier = Modifier,
-    userFirstName: String,
-    userLastName: String,
-    farmName: String,
+    state: MyProfileUiState,
     onSettings: () -> Unit,
     onPreviewPublic: () -> Unit,
     onOpenEditFarm: () -> Unit,
@@ -167,7 +179,9 @@ fun MyProfileScreen(
     onOpenHelp: () -> Unit,
     onOpenTerms: () -> Unit,
     onLogout: () -> Unit,
-    onDeleteAccount: () -> Unit
+    onOpenProductList: () -> Unit,
+    onDeleteAccount: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val showDeleteConfirm = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
@@ -196,11 +210,21 @@ fun MyProfileScreen(
             }
         }
 
-        // Hero: paisaje + avatar
+        // Hero: foto real de la finca como banner + avatar circular
+        // sobrepuesto al fondo. Si no hay foto, usa el color de marca como
+        // fallback para no dejar la zona en blanco.
         Box(modifier = Modifier.fillMaxWidth().height(140.dp)) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(BrandColors.FarmerPrimary)
-            )
+            if (state.farmPhotoBase64 != null) {
+                com.cafeteros.historia.ui.components.Base64Image(
+                    base64 = state.farmPhotoBase64,
+                    contentDescription = "Foto de mi finca",
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(BrandColors.FarmerPrimary)
+                )
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -211,7 +235,20 @@ fun MyProfileScreen(
                     .background(BrandColors.CoffeeBrown, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Outlined.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+                if (state.farmerPhotoBase64 != null) {
+                    com.cafeteros.historia.ui.components.Base64Image(
+                        base64 = state.farmerPhotoBase64,
+                        contentDescription = "Tu foto de perfil",
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
+                } else {
+                    Icon(
+                        Icons.Outlined.Person,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(40.dp))
@@ -222,11 +259,16 @@ fun MyProfileScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "$userFirstName $userLastName",
-                style = TextStyle(fontFamily = FontFamily.Serif, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BrandColors.TextPrimary)
+                text = state.fullName.ifBlank { "—" },
+                style = TextStyle(
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandColors.TextPrimary
+                )
             )
             Text(
-                text = farmName,
+                text = state.farmName,
                 color = BrandColors.TextSecondary,
                 fontSize = 13.sp,
                 fontStyle = FontStyle.Italic,
@@ -235,10 +277,19 @@ fun MyProfileScreen(
 
             // Badges
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Badge(label = "CAFICULTOR VERIFICADO", icon = Icons.Outlined.VerifiedUser, bg = Color(0xFFE8F4EC), fg = BrandColors.FarmerPrimary)
-                Badge(label = "HUILA", icon = Icons.Outlined.LocationOn, bg = BrandColors.CardBackground, fg = BrandColors.TextPrimary)
+                Badge(
+                    label = "CAFICULTOR VERIFICADO",
+                    icon = Icons.Outlined.VerifiedUser,
+                    bg = Color(0xFFE8F4EC),
+                    fg = BrandColors.FarmerPrimary
+                )
+                Badge(
+                    label = state.region.uppercase(),
+                    icon = Icons.Outlined.LocationOn,
+                    bg = BrandColors.CardBackground,
+                    fg = BrandColors.TextPrimary
+                )
             }
-            Badge(label = "DESDE ABRIL 2026", icon = Icons.Outlined.CalendarMonth, bg = BrandColors.CardBackground, fg = BrandColors.TextPrimary)
         }
 
         Spacer(modifier = Modifier.height(BrandSpacing.md))
@@ -266,14 +317,38 @@ fun MyProfileScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(text = "Tu perfil está 85% completo", color = BrandColors.TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = "VER QUÉ FALTA", color = Color(0xFF8C6E1F), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                Text(
+                    text = "Tu perfil está ${state.completionPercent}% completo",
+                    color = BrandColors.TextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "EDITAR",
+                    color = Color(0xFF8C6E1F),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp,
+                    modifier = Modifier.clickable(onClick = onOpenEditFarm)
+                )
             }
-            Text(text = "Aumenta tu visibilidad completando tu historia.", color = BrandColors.TextSecondary, fontSize = 11.sp)
+            Text(
+                text = "Aumenta tu visibilidad completando tu historia.",
+                color = BrandColors.TextSecondary,
+                fontSize = 11.sp
+            )
             Box(
-                modifier = Modifier.fillMaxWidth().height(6.dp).background(Color(0xFFEEDFA8), RoundedCornerShape(3.dp))
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(Color(0xFFEEDFA8), RoundedCornerShape(3.dp))
             ) {
-                Box(modifier = Modifier.fillMaxWidth(0.85f).height(6.dp).background(Color(0xFFC9A24A), RoundedCornerShape(3.dp)))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(state.completionPercent / 100f)
+                        .height(6.dp)
+                        .background(Color(0xFFC9A24A), RoundedCornerShape(3.dp))
+                )
             }
         }
 
@@ -305,7 +380,12 @@ fun MyProfileScreen(
             ProfileLink(icon = Icons.Outlined.EmojiEvents, title = "Premios y reconocimientos", onClick = onOpenEditFarm)
         }
         ProfileSection("MI NEGOCIO") {
-            ProfileLink(icon = Icons.Outlined.Inventory2, title = "Mis productos", badge = "11", onClick = onOpenEditFarm)
+            ProfileLink(
+                icon = Icons.Outlined.Inventory2,
+                title = "Mis productos",
+                badge = if (state.productCount > 0) state.productCount.toString() else null,
+                onClick = onOpenProductList
+            )
             ProfileLink(icon = Icons.Outlined.AccountBalanceWallet, title = "Billetera", onClick = onOpenWallet)
             ProfileLink(icon = Icons.Outlined.BarChart, title = "Estadísticas", onClick = onOpenStats)
             ProfileLink(icon = Icons.Outlined.Receipt, title = "Facturación electrónica", onClick = onSettings)

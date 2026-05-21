@@ -24,5 +24,9 @@ data class FeaturedCaficultor(
     val reviewCount: Int,
     val badge: CaficultorBadge,
     @param:DrawableRes val avatarRes: Int? = null,
-    val avatarPlaceholderColor: Color
+    val avatarPlaceholderColor: Color,
+    /** uid del caficultor en Firestore (para navegar al perfil real). */
+    val caficultorUid: String = "",
+    /** Foto de perfil real del caficultor en Base64 (sobreescribe avatarRes si está). */
+    val avatarBase64: String? = null
 )

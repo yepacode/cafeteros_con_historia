@@ -88,10 +88,8 @@ class CaficultorShopActivity : ComponentActivity() {
      * top bar. Propaga el rol activo.
      */
     private fun openCart() {
-        val intent = Intent(this, CartActivity::class.java).apply {
-            putExtra(CartActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
+        // CartActivity ya no usa extras (lee del CartStore singleton).
+        CartActivity.start(this)
     }
 
     /**
@@ -99,10 +97,7 @@ class CaficultorShopActivity : ComponentActivity() {
      * filtros y obtenga resultados. Propaga el rol activo.
      */
     private fun openFilters() {
-        val intent = Intent(this, OriginFiltersActivity::class.java).apply {
-            putExtra(OriginFiltersActivity.EXTRA_ROLE_ID, currentRoleId)
-        }
-        startActivity(intent)
+        OriginFiltersActivity.start(this)
     }
 
     companion object {

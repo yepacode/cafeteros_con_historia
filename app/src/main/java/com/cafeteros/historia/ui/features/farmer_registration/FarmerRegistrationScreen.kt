@@ -68,9 +68,19 @@ fun FarmerRegistrationScreen(
                     "Ese correo ya tiene una cuenta. Inicia sesión.",
                     Toast.LENGTH_LONG
                 ).show()
+                RegisterResult.InvalidEmail -> Toast.makeText(
+                    context,
+                    "El correo tiene un formato inválido.",
+                    Toast.LENGTH_LONG
+                ).show()
+                RegisterResult.WeakPassword -> Toast.makeText(
+                    context,
+                    "La contraseña debe tener al menos 6 caracteres.",
+                    Toast.LENGTH_LONG
+                ).show()
                 is RegisterResult.UnknownError -> Toast.makeText(
                     context,
-                    "No se pudo crear la cuenta: ${result.cause.message}",
+                    "No se pudo crear la cuenta: ${result.message}",
                     Toast.LENGTH_LONG
                 ).show()
             }

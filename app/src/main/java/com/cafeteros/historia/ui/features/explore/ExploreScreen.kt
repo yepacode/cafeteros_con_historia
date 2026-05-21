@@ -87,6 +87,7 @@ fun ExploreScreen(
     stories: List<CoffeeStory> = ExploreSampleData.stories,
     popularProducts: List<CoffeeProduct> = ExploreSampleData.popularProducts,
     onMenuClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
     onNotificationsClick: () -> Unit = {},
     onFilterClick: () -> Unit = {},
     onSearchClick: () -> Unit = {},
@@ -110,6 +111,7 @@ fun ExploreScreen(
     ) {
         ExploreTopBar(
             onMenuClick = onMenuClick,
+            onSettingsClick = onSettingsClick,
             onNotificationsClick = onNotificationsClick
         )
 

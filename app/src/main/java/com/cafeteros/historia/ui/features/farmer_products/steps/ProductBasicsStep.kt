@@ -26,7 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cafeteros.historia.ui.features.farmer_products.components.WizardHeader
-import com.cafeteros.historia.ui.features.farmer_products.model.ProductCategory
+import com.cafeteros.historia.data.model.ProductCategory
 import com.cafeteros.historia.ui.features.farmer_products.model.ProductCreationStep
 import com.cafeteros.historia.ui.features.farmer_products.model.ProductFormState
 import com.cafeteros.historia.ui.features.farmer_products.model.SUGGESTED_TASTING_NOTES
